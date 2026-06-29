@@ -33,12 +33,24 @@ export function usePlanners() {
 
   async function createPlanner(name) {
     if (!user) throw new Error('Not logged in')
+
+    // Temporary diagnostic logging — compare what the app thinks the user ID is
+    // versus what Supabase's actual current session reports.
+    const { data: sessionData } = await supabase.auth.getSession()
+    console.log('[DEBUG] user.id from context:', user.id)
+    console.log('[DEBUG] session user id:', sessionData?.session?.user?.id)
+    console.log('[DEBUG] session access_token present:', !!sessionData?.session?.access_token)
+    console.log('[DEBUG] full session object:', sessionData?.session)
+
     const { data, error } = await supabase
       .from('planners')
       .insert({ name: name || 'My Class Planner', owner_id: user.id })
       .select()
       .single()
-    if (error) throw error
+    if (error) {
+      console.log('[DEBUG] insert error full object:', error)
+      throw error
+    }
     await refresh()
     return data
   }
