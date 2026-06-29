@@ -34,15 +34,15 @@ export function usePlanners() {
   async function createPlanner(name) {
     if (!user) throw new Error('Not logged in')
 
-    // Step 1: insert only, no immediate select-back
-    const insertResult = await supabase
+    // Insert and select-back are done as two separate calls rather than
+    // chaining .insert().select().single() — the combined form was
+    // unreliable with this Supabase project's RLS setup.
+    const { error: insertError } = await supabase
       .from('planners')
       .insert({ name: name || 'My Class Planner', owner_id: user.id })
-    console.log('[DEBUG] insert-only result:', insertResult)
 
-    if (insertResult.error) throw insertResult.error
+    if (insertError) throw insertError
 
-    // Step 2: separately fetch the newly created planner
     const { data, error } = await supabase
       .from('planners')
       .select('*')
@@ -51,7 +51,6 @@ export function usePlanners() {
       .limit(1)
       .single()
 
-    console.log('[DEBUG] select-back result:', { data, error })
     if (error) throw error
 
     await refresh()
