@@ -3,6 +3,8 @@
 // explicit data object (and return a new object) rather than mutating
 // global variables, since React state should be updated immutably.
 
+import { SG_CELLS } from './timetableDefaults'
+
 export function getWeek(data, weekId) {
   return data.weeks.find(w => w.id === weekId) || null
 }
@@ -141,6 +143,14 @@ export function withRelabeledTerm(data, newTerm) {
   return { ...data, weeks }
 }
 
+// The six small-group grid cells (Rm3 Group A/B, Class 2/3 A/B), with any
+// custom labels a teacher has set in Settings merged in over the built-in
+// defaults — so an unnamed cell still falls back sensibly.
+export function getResolvedSgCells(data) {
+  const overrides = data.appSettings?.sgCellLabels || {}
+  return SG_CELLS.map(c => ({ ...c, label: overrides[c.id]?.trim() || c.label }))
+}
+
 // Small group grid data (Maths to Self / Read to Self) — a separate map on
 // the week, keyed by "{sgKey}_{day}" (e.g. "mts_Monday"), each holding an
 // optional description plus one name-list per small-group cell.
@@ -226,7 +236,7 @@ export function computeSpecialistSpans(rows, days, specialistBlocks) {
     if (rowIndices.length === 0) return
 
     const anchorRi = rowIndices[0]
-    spans[anchorRi][day] = { span: rowIndices.length, label: spec.name, notesKey: `specialist_${day}` }
+    spans[anchorRi][day] = { span: rowIndices.length, label: spec.name, notesKey: `specialist_${day}`, color: spec.color }
     rowIndices.slice(1).forEach(ri => { spans[ri][day] = { skip: true } })
   })
 

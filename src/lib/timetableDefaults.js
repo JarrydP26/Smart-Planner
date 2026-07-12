@@ -83,6 +83,6 @@ export const SUBJECT_DOT_COLOR = {
 // in Timetable Setup, applies every week automatically (see
 // computeSpecialistSpans in plannerHelpers.js).
 export const DEFAULT_SPECIALIST_BLOCKS = {
-  Tuesday: { blockCls: 'block-morning', name: 'PE / Art' },
-  Friday: { blockCls: 'block-middle', name: 'Science / Drama' },
+  Tuesday: { blockCls: 'block-morning', name: 'PE / Art', color: '#D3F0DD' },
+  Friday: { blockCls: 'block-middle', name: 'Science / Drama', color: '#F5F0C8' },
 }
