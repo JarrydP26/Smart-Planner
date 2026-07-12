@@ -43,7 +43,8 @@ export default function PlannerPage() {
 
   return (
     <div style={styles.page}>
-      <nav style={styles.sidebar}>
+      <style>{PRINT_CSS}</style>
+      <nav className="no-print" style={styles.sidebar}>
         <div style={styles.sidebarTitle}>
           📋 {data.appSettings.className} Planner
           <div style={styles.sidebarSubtitle}>{data.appSettings.schoolName}</div>
@@ -75,27 +76,41 @@ export default function PlannerPage() {
       </nav>
 
       <div style={styles.main}>
-        <div style={styles.topBar}>
+        <div className="no-print" style={styles.topBar}>
           <button style={styles.backBtn} onClick={() => navigate('/')}>← All planners</button>
           <span style={styles.plannerName}>{planner.name}</span>
           <span style={styles.saveStatus}>{saving ? 'Saving…' : ''}</span>
         </div>
 
-        {isBlank ? (
-          <TimetableSetup data={data} onSave={saveNow} />
-        ) : view === 'weekly' ? (
-          <WeeklyPlanner data={data} onSave={save} />
-        ) : view === 'settings' ? (
-          <Settings data={data} onSave={save} />
-        ) : planSubjects[view] ? (
-          <TermView data={data} onSave={save} subj={view} />
-        ) : (
-          <div style={{ padding: 30 }}>Unknown view.</div>
-        )}
+        <div className="print-area">
+          {isBlank ? (
+            <TimetableSetup data={data} onSave={saveNow} />
+          ) : view === 'weekly' ? (
+            <WeeklyPlanner data={data} onSave={save} />
+          ) : view === 'settings' ? (
+            <Settings data={data} onSave={save} />
+          ) : planSubjects[view] ? (
+            <TermView data={data} onSave={save} subj={view} />
+          ) : (
+            <div style={{ padding: 30 }}>Unknown view.</div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
+// Print CSS — since the app uses inline styles rather than a stylesheet, the
+// sidebar/topbar/buttons carry a "no-print" className specifically so this
+// stylesheet can hide them; only .print-area's content shows when printing.
+const PRINT_CSS = `
+@media print {
+  @page { size: A3 landscape; margin: 10mm; }
+  .no-print { display: none !important; }
+  body, .print-area { background: white !important; }
+  table { box-shadow: none !important; width: 100% !important; }
+}
+`
 
 const styles = {
   page: { minHeight: '100vh', background: '#F0F2F7', fontFamily: "'Segoe UI', system-ui, sans-serif", display: 'flex' },
