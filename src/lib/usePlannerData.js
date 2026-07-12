@@ -12,6 +12,7 @@ const DEFAULT_DATA = {
     className: 'Room 3',
     schoolName: '',
     termWeeks: 10,
+    currentTerm: 1,
     toggles: {
       mathsToSelf: true,
       readToSelf: true,

@@ -94,7 +94,8 @@ export function withNewWeek(data, planSubjects, startMonday) {
 
   let weekLabel = null
   if (data.weeks.length === 0) {
-    weekLabel = 'Term 1 Week 1'
+    const term = data.appSettings?.currentTerm || 1
+    weekLabel = `Term ${term} Week 1`
   } else {
     const prev = data.weeks[data.weeks.length - 1].weekLabel || ''
     const m = prev.match(/^(Term \d+ Week )(\d+)$/)
@@ -126,6 +127,18 @@ export function withNextWeek(data, planSubjects) {
   const startMonday = last ? new Date(last.dateStart) : getMonday(new Date())
   if (last) startMonday.setDate(startMonday.getDate() + 7)
   return withNewWeek(data, planSubjects, startMonday)
+}
+
+// Updates the "Term X" portion of every existing week's label to a new term
+// number, keeping each week's own "Week N" number unchanged.
+export function withRelabeledTerm(data, newTerm) {
+  const weeks = data.weeks.map((w) => {
+    const current = w.weekLabel || ''
+    const m = current.match(/^Term \d+ (Week \d+)$/)
+    const weekLabel = m ? `Term ${newTerm} ${m[1]}` : current
+    return { ...w, weekLabel }
+  })
+  return { ...data, weeks }
 }
 
 export { getMonday }
