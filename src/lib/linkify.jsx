@@ -21,7 +21,7 @@ export function linkify(text) {
     const url = match[0]
     const href = url.toLowerCase().startsWith('http') ? url : `https://${url}`
     parts.push(
-      
+      <a
         key={match.index}
         href={href}
         target="_blank"
