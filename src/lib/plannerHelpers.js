@@ -185,4 +185,44 @@ export function getBlockableRowNames(rows) {
   return rows.filter(r => r.type === 'slot' && r.name).map(r => r.name)
 }
 
+// Computes, purely from the static row structure (not stored in the data),
+// which specialist-block cells (notesKey) should visually merge with any
+// blank cells directly below them in the same day column — giving a tall
+// merged block without storing any fragile rowspan state. For each 'slot'
+// row + day: { skip: true } means "don't render — merged into the specialist
+// cell above", or { span: N } means "render with rowSpan N".
+export function computeMergedSpans(rows, days) {
+  const spans = {}
+  rows.forEach((_, ri) => { spans[ri] = {} })
+
+  const slotIndices = rows.map((r, i) => (r.type === 'slot' ? i : null)).filter(i => i !== null)
+
+  days.forEach(day => {
+    let i = 0
+    while (i < slotIndices.length) {
+      const ri = slotIndices[i]
+      const cell = rows[ri].days[day]
+      if (cell && cell.notesKey) {
+        let span = 1
+        let j = i + 1
+        while (j < slotIndices.length) {
+          const nextRi = slotIndices[j]
+          const nextCell = rows[nextRi].days[day]
+          if (nextCell === null || nextCell === undefined) {
+            spans[nextRi][day] = { skip: true }
+            span++
+            j++
+          } else break
+        }
+        spans[ri][day] = { span }
+        i = j
+      } else {
+        i++
+      }
+    }
+  })
+
+  return spans
+}
+
 export { getMonday }
