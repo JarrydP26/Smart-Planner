@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeMergedSpans } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
@@ -9,6 +9,7 @@ import BlockOutModal from './BlockOutModal'
 
 export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
   const rows = data.rows || DEFAULT_ROWS
+  const mergedSpans = useMemo(() => computeMergedSpans(rows, DAYS), [rows])
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const weeks = data.weeks
   const activeWeekId = data.activeWeekId || (weeks[0] && weeks[0].id)
@@ -167,6 +168,7 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
                   week={activeWeek}
                   data={data}
                   myGroupPrefs={myGroupPrefs}
+                  rowSpans={mergedSpans[ri]}
                   onAdd={openAdd}
                   onEdit={openEdit}
                   onDelete={quickDelete}
@@ -289,19 +291,17 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
   )
 }
 
-function RowRenderer({ row, week, data, myGroupPrefs, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
+function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
   const cells = []
-  let skip = 0
 
   for (const day of DAYS) {
-    if (skip > 0) { skip--; continue }
+    const merge = rowSpans?.[day]
+    if (merge?.skip) continue // merged into a specialist block's cell above
+
     const cell = row.days[day]
     if (!cell) { cells.push(<td key={day} style={styles.td}></td>); continue }
-    if (cell.span || cell.rowspanned) continue
 
-    const rowSpan = cell.rowspan || 1
-    const colSpan = cell.colspan || 1
-    if (colSpan > 1) skip = colSpan - 1
+    const rowSpan = merge?.span || 1
 
     // Universal block check — whole day OR this specific row blocked.
     // Overrides everything else in the cell if present.

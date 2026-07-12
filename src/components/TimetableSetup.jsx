@@ -37,8 +37,6 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   function addDraftRow(type) {
     if (type === 'slot') {
       setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', plannable: true, activeDays: [...DAYS] }])
-    } else if (type === 'specialist') {
-      setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', specialist: true, activeDays: [] }])
     } else if (type === 'break') {
       setDraftRows([...draftRows, { type: 'break', label: 'EATING TIME' }])
     } else {
@@ -62,6 +60,25 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     const activeDays = row.activeDays ? [...row.activeDays] : [...DAYS]
     row.activeDays = activeDays.includes(day) ? activeDays.filter(d => d !== day) : [...activeDays, day]
     next[idx] = row
+    setDraftRows(next)
+  }
+
+  function setSpecialistDay(idx, day) {
+    const current = draftRows[idx].specialistOverrides?.[day]
+    const label = window.prompt('Specialist name for ' + day + ' (leave blank to clear):', current || '')
+    if (label === null) return // cancelled
+    const next = [...draftRows]
+    const overrides = { ...(next[idx].specialistOverrides || {}) }
+    if (label.trim()) {
+      overrides[day] = label.trim()
+      // Make sure this day is also active so it actually renders
+      const activeDays = next[idx].activeDays ? [...next[idx].activeDays] : [...DAYS]
+      if (!activeDays.includes(day)) activeDays.push(day)
+      next[idx] = { ...next[idx], specialistOverrides: overrides, activeDays }
+    } else {
+      delete overrides[day]
+      next[idx] = { ...next[idx], specialistOverrides: overrides }
+    }
     setDraftRows(next)
   }
 
@@ -103,19 +120,15 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
       const activeDays = row.activeDays && row.activeDays.length ? row.activeDays : [...DAYS]
       const days = {}
-
-      if (row.specialist) {
-        const notesKey = (row.name || 'specialist').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
-        DAYS.forEach(d => {
-          days[d] = activeDays.includes(d) ? { fixed: row.name, cls: 's-specialist', notesKey } : null
-        })
-        newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, notesKey, days })
-        return
-      }
-
+      const overrides = row.specialistOverrides || {}
       const subjKey = (row.name || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('session_' + newRows.length)
 
       DAYS.forEach(d => {
+        if (overrides[d]) {
+          const notesKey = overrides[d].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+          days[d] = { fixed: overrides[d], cls: 's-specialist', notesKey }
+          return
+        }
         if (!activeDays.includes(d)) { days[d] = null; return }
         if (row.plannable) {
           days[d] = { plannable: true, subject: subjKey }
@@ -127,7 +140,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
       newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, days })
 
       if (row.plannable) {
-        newPlanSubjects[subjKey] = { label: row.name, days: activeDays }
+        newPlanSubjects[subjKey] = { label: row.name, days: activeDays.filter(d => !overrides[d]) }
       }
     })
 
@@ -200,6 +213,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
       </div>
 
       <div style={styles.sectionTitle}>Timetable rows (in order)</div>
+      <p style={styles.starHint}>Tap the ☆ next to a day to turn just that day into a specialist block (PE, Art, Music…) without affecting the row's other days.</p>
       <div style={styles.rowList}>
         {draftRows.map((row, idx) => (
           <DraftRowCard
@@ -208,6 +222,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
             idx={idx}
             onUpdate={updateDraftRow}
             onToggleDay={toggleDraftRowDay}
+            onSetSpecialistDay={setSpecialistDay}
             onMove={moveDraftRow}
             onDelete={deleteDraftRow}
           />
@@ -216,7 +231,6 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
       <div style={styles.addRowBar}>
         <button style={styles.buttonOutline} onClick={() => addDraftRow('slot')}>+ Add session row</button>
-        <button style={styles.buttonOutline} onClick={() => addDraftRow('specialist')}>+ Add specialist block</button>
         <button style={styles.buttonOutline} onClick={() => addDraftRow('break')}>+ Add break</button>
         <button style={styles.buttonOutline} onClick={() => addDraftRow('block-header')}>+ Add block header</button>
       </div>
@@ -229,7 +243,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   )
 }
 
-function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
+function DraftRowCard({ row, idx, onUpdate, onToggleDay, onSetSpecialistDay, onMove, onDelete }) {
   if (row.type === 'block-header') {
     return (
       <div style={{ ...styles.rowCard, background: '#EAF1FB' }}>
@@ -277,41 +291,50 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
     )
   }
 
-  const rowType = row.specialist ? 'specialist' : row.plannable ? 'plannable' : 'fixed'
+  const isPlannable = !!row.plannable
+  const overrides = row.specialistOverrides || {}
 
   return (
-    <div style={{ ...styles.rowCard, ...(rowType === 'specialist' ? { background: '#F0F8F5' } : {}) }}>
+    <div style={styles.rowCard}>
       <input type="time" value={row.time24 || ''} onChange={(e) => onUpdate(idx, 'time24', e.target.value)} style={styles.rowInputTime} />
       <input
-        type="text" value={row.name || ''} placeholder="Session name (e.g. Maths, PE / Art)"
+        type="text" value={row.name || ''} placeholder="Session name (e.g. Maths)"
         onChange={(e) => onUpdate(idx, 'name', e.target.value)}
         style={styles.rowInputName}
       />
       <div style={styles.dayToggles}>
         {DAYS.map(d => {
+          const isOverride = !!overrides[d]
           const on = row.activeDays ? row.activeDays.includes(d) : true
           return (
-            <button
-              key={d}
-              type="button"
-              onClick={() => onToggleDay(idx, d)}
-              title={d}
-              style={{ ...styles.dayToggle, ...(on ? styles.dayToggleActive : {}) }}
-            >{d[0]}</button>
+            <div key={d} style={styles.dayToggleStack}>
+              <button
+                type="button"
+                onClick={() => onToggleDay(idx, d)}
+                title={isOverride ? `${d} — specialist: ${overrides[d]}` : d}
+                style={{
+                  ...styles.dayToggle,
+                  ...(on ? styles.dayToggleActive : {}),
+                  ...(isOverride ? styles.dayToggleSpecialist : {}),
+                }}
+              >{d[0]}</button>
+              <button
+                type="button"
+                onClick={() => onSetSpecialistDay(idx, d)}
+                title={isOverride ? `Edit specialist name for ${d}` : `Mark ${d} as a specialist block (PE, Art, Music…)`}
+                style={styles.starBtn}
+              >{isOverride ? '⭐' : '☆'}</button>
+            </div>
           )
         })}
       </div>
       <select
-        value={rowType}
-        onChange={(e) => {
-          const v = e.target.value
-          onUpdate(idx, { plannable: v === 'plannable', specialist: v === 'specialist' })
-        }}
+        value={isPlannable ? 'plannable' : 'fixed'}
+        onChange={(e) => onUpdate(idx, 'plannable', e.target.value === 'plannable')}
         style={styles.rowSelect}
       >
         <option value="fixed">Fixed</option>
         <option value="plannable">Plannable</option>
-        <option value="specialist">Specialist (e.g. PE, Art, Music)</option>
       </select>
       <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
     </div>
@@ -379,15 +402,18 @@ function rowsToDraft(liveRows) {
 
     const activeDays = []
     let plannable = false
-    let specialist = false
     let cls = null
+    const specialistOverrides = {}
     DAYS.forEach(d => {
       const cell = row.days[d]
       if (cell) {
         activeDays.push(d)
-        if (cell.plannable) plannable = true
-        if (cell.notesKey) specialist = true
-        if (cell.cls) cls = cell.cls
+        if (cell.notesKey) {
+          specialistOverrides[d] = cell.fixed
+        } else {
+          if (cell.plannable) plannable = true
+          if (cell.cls) cls = cell.cls
+        }
       }
     })
     return {
@@ -395,9 +421,9 @@ function rowsToDraft(liveRows) {
       time24: convertTimeLabelTo24(row.time),
       name: row.name,
       plannable,
-      specialist,
       activeDays,
-      cls, // preserved so a Fixed/Specialist row keeps its original color
+      cls, // preserved so a Fixed row keeps its original color
+      specialistOverrides, // per-day overrides, e.g. { Tuesday: 'PE / Art' }
     }
   })
 }
@@ -419,8 +445,12 @@ const styles = {
   rowInputName: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, flex: 1, minWidth: 140 },
   rowInputWide: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, flex: 1 },
   dayToggles: { display: 'flex', gap: 3 },
+  dayToggleStack: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 },
   dayToggle: { width: 22, height: 22, borderRadius: 4, border: '1px solid #D4D9E5', background: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', color: '#B0B6C4' },
   dayToggleActive: { background: '#3A86D4', color: '#fff', borderColor: '#3A86D4' },
+  dayToggleSpecialist: { background: '#4AA88A', borderColor: '#4AA88A' },
+  starBtn: { width: 22, height: 16, border: 'none', background: 'none', fontSize: 10, cursor: 'pointer', padding: 0, lineHeight: 1 },
+  starHint: { fontSize: 11, color: '#7A849E', marginTop: -4, marginBottom: 10 },
   rowSelect: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 6px', fontSize: 11, fontFamily: 'inherit' },
   protectedHint: { fontSize: 10, color: '#7A849E', fontStyle: 'italic', flex: 1 },
   rowActions: { display: 'flex', gap: 3, marginLeft: 'auto' },
