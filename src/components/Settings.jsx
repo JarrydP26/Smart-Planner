@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DEFAULT_PLAN_SUBJECTS } from '../lib/timetableDefaults'
-import { withNewWeek, withNextWeek, getMonday } from '../lib/plannerHelpers'
+import { withNewWeek, withNextWeek, withRelabeledTerm, getMonday } from '../lib/plannerHelpers'
 
 const TOGGLE_DEFINITIONS = [
   { key: 'mathsToSelf', label: 'Maths to Self — small groups', hint: 'On: editable small-group grid. Off: plain fixed box.' },
@@ -15,6 +15,7 @@ export default function Settings({ data, onSave }) {
   const [className, setClassName] = useState(data.appSettings.className)
   const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
   const [termWeeks, setTermWeeks] = useState(data.appSettings.termWeeks)
+  const [currentTerm, setCurrentTerm] = useState(data.appSettings.currentTerm || 1)
   const [savedMsg, setSavedMsg] = useState(false)
 
   function adjustWeekCount(target) {
@@ -37,7 +38,9 @@ export default function Settings({ data, onSave }) {
 
   function saveDetails() {
     const newTermWeeks = Math.max(1, Math.min(15, parseInt(termWeeks) || data.appSettings.termWeeks))
+    const newTerm = Math.max(1, Math.min(4, parseInt(currentTerm) || data.appSettings.currentTerm || 1))
     const weeksChanged = newTermWeeks !== data.appSettings.termWeeks
+    const termChanged = newTerm !== (data.appSettings.currentTerm || 1)
 
     let newData = data
     if (weeksChanged) {
@@ -55,6 +58,10 @@ export default function Settings({ data, onSave }) {
       newData = adjustWeekCount(newTermWeeks)
     }
 
+    if (termChanged) {
+      newData = withRelabeledTerm(newData, newTerm)
+    }
+
     newData = {
       ...newData,
       appSettings: {
@@ -62,6 +69,7 @@ export default function Settings({ data, onSave }) {
         className: className.trim() || 'Room 3',
         schoolName: schoolName.trim(),
         termWeeks: newTermWeeks,
+        currentTerm: newTerm,
       },
     }
     onSave(newData)
@@ -92,6 +100,16 @@ export default function Settings({ data, onSave }) {
         <div style={styles.field}>
           <label style={styles.label}>School name</label>
           <input type="text" value={schoolName} onChange={(e) => setSchoolName(e.target.value)} style={styles.input} />
+        </div>
+        <div style={styles.field}>
+          <label style={styles.label}>Term</label>
+          <select value={currentTerm} onChange={(e) => setCurrentTerm(e.target.value)} style={{ ...styles.input, maxWidth: 100 }}>
+            <option value={1}>Term 1</option>
+            <option value={2}>Term 2</option>
+            <option value={3}>Term 3</option>
+            <option value={4}>Term 4</option>
+          </select>
+          <p style={styles.hint}>Updates the term number on all week labels (e.g. "Term 2 Week 1").</p>
         </div>
         <div style={styles.field}>
           <label style={styles.label}>Term length (weeks)</label>
