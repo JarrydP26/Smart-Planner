@@ -1,6 +1,14 @@
 // Default timetable structure — matches the HTML version's built-in ROWS.
 // A planner can override this via Timetable Setup; if data.rows is null,
 // this default is used instead.
+//
+// Specialist blocks (PE/Art, Science/Drama, etc.) are their own standalone
+// rows rather than a rowspan merged across several other rows — this is
+// deliberately simpler than the original HTML's approach: rowspan cells that
+// stretch across several rows are fragile (any timetable edit around them
+// easily desyncs the table's column count), and standalone rows are fully
+// configurable — a teacher can move, rename, retime, or add more of them
+// freely via Timetable Setup.
 
 export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
@@ -10,30 +18,36 @@ export const DEFAULT_ROWS = [
     days: { Monday: { fixed: 'Circle\n15 mins', cls: 's-circle' }, Tuesday: { fixed: 'Circle\n15 mins', cls: 's-circle' }, Wednesday: { fixed: 'Circle\n15 mins', cls: 's-circle' }, Thursday: { fixed: 'Circle\n15 mins', cls: 's-circle' }, Friday: { fixed: 'Circle\n15 mins', cls: 's-circle' } }
   },
   { type: 'slot', time: '9:00', name: 'Learning Powers', topicKey: 'learningPowers', toggleKey: 'learningPowers',
-    days: { Monday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true }, Tuesday: { fixed: 'PE / ART', cls: 's-pe', rowspan: 3, notesKey: 'pe_art' }, Wednesday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true }, Thursday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true }, Friday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true } }
+    days: { Monday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true }, Tuesday: null, Wednesday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true }, Thursday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true }, Friday: { fixed: 'Learning Powers', cls: 's-lp', toggleAware: true } }
+  },
+  { type: 'slot', time: '9:00', name: 'PE / Art', notesKey: 'pe_art',
+    days: { Monday: null, Tuesday: { fixed: 'PE / Art', cls: 's-specialist', notesKey: 'pe_art' }, Wednesday: null, Thursday: null, Friday: null }
   },
   { type: 'slot', time: '9:30', name: 'Maths', topicKey: 'maths',
-    days: { Monday: { plannable: true, subject: 'maths' }, Tuesday: { rowspanned: true }, Wednesday: { plannable: true, subject: 'maths' }, Thursday: { plannable: true, subject: 'maths' }, Friday: { plannable: true, subject: 'maths' } }
+    days: { Monday: { plannable: true, subject: 'maths' }, Tuesday: null, Wednesday: { plannable: true, subject: 'maths' }, Thursday: { plannable: true, subject: 'maths' }, Friday: { plannable: true, subject: 'maths' } }
   },
   { type: 'slot', time: '10:30', name: 'Spelling', topicKey: 'spelling', spellingOnly: true, toggleKey: 'spelling',
-    days: { Monday: { spelling: true }, Tuesday: { rowspanned: true }, Wednesday: { spelling: true }, Thursday: { spelling: true }, Friday: { spelling: true } }
+    days: { Monday: { spelling: true }, Tuesday: null, Wednesday: { spelling: true }, Thursday: { spelling: true }, Friday: { spelling: true } }
   },
   { type: 'break', label: 'EATING TIME 11:00–11:10  ·  OUTSIDE PLAY 11:10–11:35' },
   { type: 'block-header', label: 'MIDDLE BLOCK  11:35 – 1:35', cls: 'block-middle' },
   { type: 'slot', time: '11:35', name: 'Maths to Self', sgKey: 'mts',
-    days: { Monday: { sg: true, sgKey: 'mts' }, Tuesday: { sg: true, sgKey: 'mts' }, Wednesday: { sg: true, sgKey: 'mts' }, Thursday: { sg: true, sgKey: 'mts' }, Friday: { fixed: 'Science / Drama', cls: 's-science', rowspan: 5, notesKey: 'science_drama' } }
+    days: { Monday: { sg: true, sgKey: 'mts' }, Tuesday: { sg: true, sgKey: 'mts' }, Wednesday: { sg: true, sgKey: 'mts' }, Thursday: { sg: true, sgKey: 'mts' }, Friday: null }
+  },
+  { type: 'slot', time: '11:35', name: 'Science / Drama', notesKey: 'science_drama',
+    days: { Monday: null, Tuesday: null, Wednesday: null, Thursday: null, Friday: { fixed: 'Science / Drama', cls: 's-specialist', notesKey: 'science_drama' } }
   },
   { type: 'slot', time: '11:45', name: 'Read to Self', sgKey: 'rts',
-    days: { Monday: { sg: true, sgKey: 'rts' }, Tuesday: { sg: true, sgKey: 'rts' }, Wednesday: { sg: true, sgKey: 'rts' }, Thursday: { sg: true, sgKey: 'rts' }, Friday: { rowspanned: true } }
+    days: { Monday: { sg: true, sgKey: 'rts' }, Tuesday: { sg: true, sgKey: 'rts' }, Wednesday: { sg: true, sgKey: 'rts' }, Thursday: { sg: true, sgKey: 'rts' }, Friday: null }
   },
   { type: 'slot', time: '12:20', name: 'Writing', topicKey: 'writing',
-    days: { Monday: { plannable: true, subject: 'writing' }, Tuesday: { plannable: true, subject: 'writing' }, Wednesday: { plannable: true, subject: 'writing' }, Thursday: { plannable: true, subject: 'writing' }, Friday: { rowspanned: true } }
+    days: { Monday: { plannable: true, subject: 'writing' }, Tuesday: { plannable: true, subject: 'writing' }, Wednesday: { plannable: true, subject: 'writing' }, Thursday: { plannable: true, subject: 'writing' }, Friday: null }
   },
   { type: 'slot', time: '1:00', name: 'Brain Break', topicKey: 'brainBreak', toggleKey: 'brainBreak',
-    days: { Monday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Tuesday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Wednesday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Thursday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Friday: { rowspanned: true } }
+    days: { Monday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Tuesday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Wednesday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Thursday: { fixed: 'Brain Break', cls: 's-brain', toggleAware: true }, Friday: null }
   },
   { type: 'slot', time: '1:10', name: 'Reading', topicKey: 'reading',
-    days: { Monday: { plannable: true, subject: 'reading' }, Tuesday: { plannable: true, subject: 'reading' }, Wednesday: { plannable: true, subject: 'reading' }, Thursday: { plannable: true, subject: 'reading' }, Friday: { rowspanned: true } }
+    days: { Monday: { plannable: true, subject: 'reading' }, Tuesday: { plannable: true, subject: 'reading' }, Wednesday: { plannable: true, subject: 'reading' }, Thursday: { plannable: true, subject: 'reading' }, Friday: null }
   },
   { type: 'break', label: 'EATING TIME 1:35–1:45  ·  OUTSIDE PLAY 1:45–2:05' },
   { type: 'block-header', label: 'AFTERNOON BLOCK  2:05 – 3:00', cls: 'block-afternoon' },
