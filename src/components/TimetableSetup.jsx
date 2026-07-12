@@ -36,7 +36,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
   function addDraftRow(type) {
     if (type === 'slot') {
-      setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', plannable: true, activeDays: [...DAYS], accColor: '#3A86D4' }])
+      setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', plannable: true, activeDays: [...DAYS] }])
     } else if (type === 'break') {
       setDraftRows([...draftRows, { type: 'break', label: 'EATING TIME' }])
     } else {
@@ -80,11 +80,18 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
     draftRows.forEach((row) => {
       if (row.type === 'block-header') {
-        newRows.push({ type: 'block-header', label: row.label, cls: 'block-morning' })
+        newRows.push({ type: 'block-header', label: row.label, cls: row.cls || 'block-morning' })
         return
       }
       if (row.type === 'break') {
         newRows.push({ type: 'break', label: row.label })
+        return
+      }
+
+      if (row.special) {
+        // Small-group / notes rows keep their exact original cell structure
+        // (including rowspan and color class) — only time/name are editable.
+        newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, days: row._originalDays })
         return
       }
 
@@ -95,16 +102,16 @@ export default function TimetableSetup({ data, onSave, onDone }) {
       DAYS.forEach(d => {
         if (!activeDays.includes(d)) { days[d] = null; return }
         if (row.plannable) {
-          days[d] = { plannable: true, subject: subjKey, accColor: row.accColor }
+          days[d] = { plannable: true, subject: subjKey }
         } else {
-          days[d] = { fixed: row.name, cls: 's-custom', accColor: row.accColor }
+          days[d] = { fixed: row.name, cls: row.cls || 's-custom' }
         }
       })
 
       newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, days })
 
       if (row.plannable) {
-        newPlanSubjects[subjKey] = { label: row.name, days: activeDays, accColor: row.accColor }
+        newPlanSubjects[subjKey] = { label: row.name, days: activeDays }
       }
     })
 
@@ -206,15 +213,50 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 }
 
 function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
-  if (row.type === 'block-header' || row.type === 'break') {
+  if (row.type === 'block-header') {
     return (
-      <div style={{ ...styles.rowCard, background: row.type === 'block-header' ? '#EAF1FB' : '#F0F2F7' }}>
+      <div style={{ ...styles.rowCard, background: '#EAF1FB' }}>
         <input
           type="text" value={row.label || ''}
-          placeholder={row.type === 'block-header' ? 'e.g. MORNING BLOCK 8:45–11:00' : 'e.g. EATING TIME 11:00–11:10'}
+          placeholder="e.g. MORNING BLOCK 8:45–11:00"
           onChange={(e) => onUpdate(idx, 'label', e.target.value)}
           style={styles.rowInputWide}
         />
+        <select value={row.cls || 'block-morning'} onChange={(e) => onUpdate(idx, 'cls', e.target.value)} style={styles.rowSelect}>
+          <option value="block-morning">Blue (morning)</option>
+          <option value="block-middle">Green (middle)</option>
+          <option value="block-afternoon">Orange (afternoon)</option>
+        </select>
+        <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
+      </div>
+    )
+  }
+  if (row.type === 'break') {
+    return (
+      <div style={{ ...styles.rowCard, background: '#F0F2F7' }}>
+        <input
+          type="text" value={row.label || ''}
+          placeholder="e.g. EATING TIME 11:00–11:10"
+          onChange={(e) => onUpdate(idx, 'label', e.target.value)}
+          style={styles.rowInputWide}
+        />
+        <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
+      </div>
+    )
+  }
+
+  if (row.special) {
+    return (
+      <div style={{ ...styles.rowCard, background: '#F8F9FB' }}>
+        <input type="time" value={row.time24 || ''} onChange={(e) => onUpdate(idx, 'time24', e.target.value)} style={styles.rowInputTime} />
+        <input
+          type="text" value={row.name || ''}
+          onChange={(e) => onUpdate(idx, 'name', e.target.value)}
+          style={styles.rowInputName}
+        />
+        <span style={styles.protectedHint}>
+          {row.special === 'sg' ? '🔒 Small group grid — structure protected' : '🔒 Notes block — structure protected'}
+        </span>
         <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
       </div>
     )
@@ -252,11 +294,6 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
         <option value="fixed">Fixed</option>
         <option value="plannable">Plannable</option>
       </select>
-      <input
-        type="color" value={row.accColor || '#3A86D4'}
-        onChange={(e) => onUpdate(idx, 'accColor', e.target.value)}
-        style={styles.colorSwatch}
-      />
       <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
     </div>
   )
@@ -293,21 +330,41 @@ function convertTimeLabelTo24(label) {
 }
 
 // Converts the live rows structure (per-day cell objects) into a simplified
-// draft shape for editing.
+// draft shape for editing. Rows containing small-group grids (Maths to Self /
+// Read to Self) or notes blocks (PE/Art, Science/Drama) have complex rowspan
+// structure the simple editor can't safely rebuild — these are marked
+// "special" and kept read-only (name/time only) so their exact cell
+// structure and color survives a save untouched.
 function rowsToDraft(liveRows) {
   return liveRows.map(row => {
-    if (row.type === 'block-header' || row.type === 'break') {
+    if (row.type === 'block-header') {
+      return { type: row.type, label: row.label, cls: row.cls || 'block-morning' }
+    }
+    if (row.type === 'break') {
       return { type: row.type, label: row.label }
     }
+
+    // Check for a special cell (small group / notes) anywhere in this row
+    const specialCell = DAYS.map(d => row.days[d]).find(c => c && (c.sg || c.notesKey))
+    if (specialCell) {
+      return {
+        type: 'slot',
+        special: specialCell.sg ? 'sg' : 'notes',
+        name: row.name,
+        time24: convertTimeLabelTo24(row.time),
+        _originalDays: row.days, // reused verbatim on save — not rebuilt
+      }
+    }
+
     const activeDays = []
     let plannable = false
-    let accColor = null
+    let cls = null
     DAYS.forEach(d => {
       const cell = row.days[d]
       if (cell && !cell.rowspanned && !cell.span) {
         activeDays.push(d)
         if (cell.plannable) plannable = true
-        if (cell.accColor) accColor = cell.accColor
+        if (cell.cls) cls = cell.cls
       }
     })
     return {
@@ -316,7 +373,7 @@ function rowsToDraft(liveRows) {
       name: row.name,
       plannable,
       activeDays,
-      accColor: accColor || '#3A86D4',
+      cls, // preserved so a Fixed row (e.g. Circle, Brain Break) keeps its color
     }
   })
 }
@@ -341,7 +398,7 @@ const styles = {
   dayToggle: { width: 22, height: 22, borderRadius: 4, border: '1px solid #D4D9E5', background: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', color: '#B0B6C4' },
   dayToggleActive: { background: '#3A86D4', color: '#fff', borderColor: '#3A86D4' },
   rowSelect: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 6px', fontSize: 11, fontFamily: 'inherit' },
-  colorSwatch: { width: 30, height: 28, border: '1px solid #D4D9E5', borderRadius: 5, padding: 0, cursor: 'pointer' },
+  protectedHint: { fontSize: 10, color: '#7A849E', fontStyle: 'italic', flex: 1 },
   rowActions: { display: 'flex', gap: 3, marginLeft: 'auto' },
   iconBtn: { width: 24, height: 24, border: '1px solid #D4D9E5', background: '#fff', borderRadius: 5, fontSize: 11, cursor: 'pointer' },
   addRowBar: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
