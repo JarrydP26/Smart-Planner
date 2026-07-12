@@ -25,12 +25,26 @@ function parsePlainTable(text) {
 export default function PasteImportModal({ open, subjLabel, weeks, activeWeekId, onApply, onClose }) {
   const [tableRows, setTableRows] = useState(null) // [{cells:[...]}, ...]
   const [headerRowIndex, setHeaderRowIndex] = useState(null) // which row (if any) looks like day names
-  const [contentRowIndex, setContentRowIndex] = useState(0)
+  const [mergedCells, setMergedCells] = useState([]) // one combined text block per column, all content rows joined
   const [dayMap, setDayMap] = useState({}) // column index -> day
   const [weekId, setWeekId] = useState(activeWeekId)
   const [downOnBackdrop, setDownOnBackdrop] = useState(false)
 
   if (!open) return null
+
+  // Combines every content row's text for a given column into one block,
+  // e.g. if a day has 3 separate table rows (different activities), they
+  // all collapse into one session with each row on its own line.
+  function mergeColumns(rows, contentStartIndex, colCount) {
+    const merged = []
+    for (let ci = 0; ci < colCount; ci++) {
+      const pieces = rows.slice(contentStartIndex)
+        .map(r => (r.cells[ci] || '').trim())
+        .filter(Boolean)
+      merged.push(pieces.join('\n'))
+    }
+    return merged
+  }
 
   function handlePaste(e) {
     e.preventDefault()
@@ -45,14 +59,16 @@ export default function PasteImportModal({ open, subjLabel, weeks, activeWeekId,
     }
 
     setTableRows(rows)
+    const colCount = Math.max(...rows.map(r => r.cells.length))
 
     // If the first row's cells look like day names, treat it as the header
-    // and the next row as content. Otherwise there's no header — the single
-    // row IS the content, and days need to be mapped manually.
+    // and every row after it as content (merged together per column).
+    // Otherwise there's no header — every row is content, and days need to
+    // be mapped manually.
     const firstRowIsHeader = rows[0].cells.some(c => DAYS.some(d => c.toLowerCase().includes(d.toLowerCase())))
     if (firstRowIsHeader && rows.length > 1) {
       setHeaderRowIndex(0)
-      setContentRowIndex(1)
+      setMergedCells(mergeColumns(rows, 1, colCount))
       const dm = {}
       rows[0].cells.forEach((cellText, ci) => {
         const day = DAYS.find(d => cellText.toLowerCase().includes(d.toLowerCase()))
@@ -61,7 +77,7 @@ export default function PasteImportModal({ open, subjLabel, weeks, activeWeekId,
       setDayMap(dm)
     } else {
       setHeaderRowIndex(null)
-      setContentRowIndex(0)
+      setMergedCells(mergeColumns(rows, 0, colCount))
       setDayMap({})
     }
   }
@@ -69,13 +85,12 @@ export default function PasteImportModal({ open, subjLabel, weeks, activeWeekId,
   function reset() {
     setTableRows(null)
     setHeaderRowIndex(null)
-    setContentRowIndex(0)
+    setMergedCells([])
     setDayMap({})
   }
 
   function handleApply() {
-    const contentCells = tableRows[contentRowIndex]?.cells || []
-    const matchedCount = contentCells.filter((c, ci) => dayMap[ci] && c.trim()).length
+    const matchedCount = mergedCells.filter((c, ci) => dayMap[ci] && c.trim()).length
     if (matchedCount === 0) {
       window.alert('Nothing matched — check the day mapping below.')
       return
@@ -83,7 +98,7 @@ export default function PasteImportModal({ open, subjLabel, weeks, activeWeekId,
     const week = weeks.find(w => w.id === weekId)
     const weekLabel = week?.weekLabel || week?.label || 'this week'
     if (!window.confirm(`Import ${matchedCount} session${matchedCount === 1 ? '' : 's'} for ${subjLabel} into ${weekLabel}? This will overwrite any existing sessions in those days.`)) return
-    onApply({ weekId, dayMap, contentCells })
+    onApply({ weekId, dayMap, contentCells: mergedCells })
     reset()
   }
 
@@ -127,9 +142,9 @@ export default function PasteImportModal({ open, subjLabel, weeks, activeWeekId,
 
             <div style={styles.mapSection}>
               <div style={styles.mapLabel}>Columns → Days</div>
-              {tableRows[contentRowIndex].cells.map((cellText, ci) => (
+              {mergedCells.map((cellText, ci) => (
                 <div key={ci} style={styles.mapRow}>
-                  <span style={styles.mapCellText} title={cellText}>{cellText || '(blank)'}</span>
+                  <span style={styles.mapCellText} title={cellText}>{cellText.split('\n')[0] || '(blank)'}{cellText.includes('\n') ? ` (+${cellText.split('\n').length - 1} more)` : ''}</span>
                   <select value={dayMap[ci] || ''} onChange={(e) => setDayMap({ ...dayMap, [ci]: e.target.value || undefined })} style={styles.select}>
                     <option value="">Skip this column</option>
                     {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
