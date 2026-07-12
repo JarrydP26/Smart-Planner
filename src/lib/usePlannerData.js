@@ -25,6 +25,7 @@ const DEFAULT_DATA = {
   },
   rows: null, // null = use the default built-in timetable; otherwise a custom Timetable Setup result
   planSubjects: null, // null = use the default built-in subjects
+  specialistBlocks: null, // null = use the default (PE/Art Tuesday, Science/Drama Friday); otherwise a custom Timetable Setup result
 }
 
 export function usePlannerData(plannerId) {

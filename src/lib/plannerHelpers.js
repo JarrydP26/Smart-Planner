@@ -156,7 +156,10 @@ export function withSgDataSet(week, sgKey, day, obj) {
 
 // Block Out — marks a whole day, or one specific row on one day, as
 // unavailable (excursions, assemblies, etc). Checked before any other cell
-// content so it overrides everything else for that cell.
+// content so it overrides everything else for that cell. Specialist
+// sessions (PE, Art, Music…) are a separate, recurring mechanism — see
+// getSpecialistBlock / computeSpecialistSpans below — since those repeat
+// every week rather than being a one-off event.
 export function getBlockLabel(week, rowName, day) {
   return (week.dayBlocks && week.dayBlocks[day]) || (week.rowBlocks && week.rowBlocks[`${rowName}_${day}`]) || null
 }
@@ -185,41 +188,46 @@ export function getBlockableRowNames(rows) {
   return rows.filter(r => r.type === 'slot' && r.name).map(r => r.name)
 }
 
-// Computes, purely from the static row structure (not stored in the data),
-// which specialist-block cells (notesKey) should visually merge with any
-// blank cells directly below them in the same day column — giving a tall
-// merged block without storing any fragile rowspan state. For each 'slot'
-// row + day: { skip: true } means "don't render — merged into the specialist
-// cell above", or { span: N } means "render with rowSpan N".
-export function computeMergedSpans(rows, days) {
+// The named session blocks (Morning/Middle/Afternoon block-headers) in this
+// timetable, in display order — used to populate the Specialist picker in
+// Timetable Setup.
+export function getSessionBlocks(rows) {
+  return rows.filter(r => r.type === 'block-header').map(r => ({ cls: r.cls, label: r.label }))
+}
+
+// Computes which rows should render as part of a specialist session
+// (PE, Art, Music…) for each day, based on the recurring declaration in
+// data.specialistBlocks — e.g. { Tuesday: { blockCls: 'block-morning', name: 'PE / Art' } }.
+// This is a timetable-level setting (configured once in Timetable Setup),
+// not a one-off weekly event, so it applies to every week automatically.
+// Every 'slot' row that falls under the declared block, on the declared day,
+// gets merged into one tall block — the first such row is the "anchor"
+// (rendered with the specialist name, a shared notes area, and a rowSpan
+// covering the rest), and the following ones are skipped entirely.
+export function computeSpecialistSpans(rows, days, specialistBlocks) {
   const spans = {}
   rows.forEach((_, ri) => { spans[ri] = {} })
+  if (!specialistBlocks) return spans
 
-  const slotIndices = rows.map((r, i) => (r.type === 'slot' ? i : null)).filter(i => i !== null)
+  // Which block-header each row falls under, by array position
+  const rowBlockCls = []
+  let currentBlockCls = null
+  rows.forEach((r, ri) => {
+    if (r.type === 'block-header') currentBlockCls = r.cls
+    rowBlockCls[ri] = currentBlockCls
+  })
 
   days.forEach(day => {
-    let i = 0
-    while (i < slotIndices.length) {
-      const ri = slotIndices[i]
-      const cell = rows[ri].days[day]
-      if (cell && cell.notesKey) {
-        let span = 1
-        let j = i + 1
-        while (j < slotIndices.length) {
-          const nextRi = slotIndices[j]
-          const nextCell = rows[nextRi].days[day]
-          if (nextCell === null || nextCell === undefined) {
-            spans[nextRi][day] = { skip: true }
-            span++
-            j++
-          } else break
-        }
-        spans[ri][day] = { span }
-        i = j
-      } else {
-        i++
-      }
-    }
+    const spec = specialistBlocks[day]
+    if (!spec || !spec.blockCls) return
+    const rowIndices = rows
+      .map((r, ri) => (r.type === 'slot' && rowBlockCls[ri] === spec.blockCls ? ri : null))
+      .filter(ri => ri !== null)
+    if (rowIndices.length === 0) return
+
+    const anchorRi = rowIndices[0]
+    spans[anchorRi][day] = { span: rowIndices.length, label: spec.name, notesKey: `specialist_${day}` }
+    rowIndices.slice(1).forEach(ri => { spans[ri][day] = { skip: true } })
   })
 
   return spans
