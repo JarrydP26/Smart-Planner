@@ -1,89 +1,157 @@
 import { useState } from 'react'
-import { DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, DAYS } from '../lib/timetableDefaults'
-import { withNewWeek, getMonday } from '../lib/plannerHelpers'
+import { DEFAULT_PLAN_SUBJECTS } from '../lib/timetableDefaults'
+import { withNewWeek, withNextWeek, getMonday } from '../lib/plannerHelpers'
 
-// Phase 2 first pass: lets a brand-new planner start from the same built-in
-// timetable the HTML version shipped with. Building a full custom
-// row-by-row editor (like the HTML version's drag/drop-free builder) is a
-// later refinement — for now this unblocks every other feature by giving a
-// blank planner a real timetable to work with.
+const TOGGLE_DEFINITIONS = [
+  { key: 'mathsToSelf', label: 'Maths to Self — small groups', hint: 'On: editable small-group grid. Off: plain fixed box.' },
+  { key: 'readToSelf', label: 'Read to Self — small groups', hint: 'On: editable small-group grid. Off: plain fixed box.' },
+  { key: 'learningPowers', label: 'Learning Powers — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
+  { key: 'spelling', label: 'Spelling — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
+  { key: 'checkIn', label: 'Check-in Chats — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
+  { key: 'brainBreak', label: 'Brain Break — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
+]
 
-export default function TimetableSetup({ data, onSave }) {
-  const [busy, setBusy] = useState(false)
+export default function Settings({ data, onSave }) {
+  const [className, setClassName] = useState(data.appSettings.className)
+  const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
+  const [termWeeks, setTermWeeks] = useState(data.appSettings.termWeeks)
+  const [savedMsg, setSavedMsg] = useState(false)
 
-  async function useDefaultTimetable() {
-    setBusy(true)
-    const withTimetable = { ...data, rows: null, planSubjects: null }
-    const withFirstWeek = withNewWeek(withTimetable, DEFAULT_PLAN_SUBJECTS, getMonday(new Date()))
-    await onSave(withFirstWeek)
-    setBusy(false)
+  function adjustWeekCount(target) {
+    let newData = data
+    if (data.weeks.length > target) {
+      newData = { ...data, weeks: data.weeks.slice(0, target) }
+      if (!newData.weeks.find(w => w.id === newData.activeWeekId)) {
+        newData.activeWeekId = newData.weeks.length ? newData.weeks[newData.weeks.length - 1].id : null
+      }
+    } else if (data.weeks.length < target) {
+      const toAdd = target - data.weeks.length
+      for (let i = 0; i < toAdd; i++) {
+        newData = data.weeks.length === 0 && i === 0
+          ? withNewWeek(newData, data.planSubjects || DEFAULT_PLAN_SUBJECTS, getMonday(new Date()))
+          : withNextWeek(newData, data.planSubjects || DEFAULT_PLAN_SUBJECTS)
+      }
+    }
+    return newData
+  }
+
+  function saveDetails() {
+    const newTermWeeks = Math.max(1, Math.min(15, parseInt(termWeeks) || data.appSettings.termWeeks))
+    const weeksChanged = newTermWeeks !== data.appSettings.termWeeks
+
+    let newData = data
+    if (weeksChanged) {
+      const willDelete = newTermWeeks < data.weeks.length
+      if (willDelete) {
+        const removedCount = data.weeks.length - newTermWeeks
+        const hasContent = data.weeks.slice(newTermWeeks).some(w =>
+          Object.values(w.sessions || {}).some(subjDays => Object.values(subjDays).some(s => s))
+        )
+        const msg = hasContent
+          ? `Reducing to ${newTermWeeks} weeks will DELETE the last ${removedCount} week(s), which contain planned content. Continue?`
+          : `Reduce to ${newTermWeeks} weeks? The last ${removedCount} empty week(s) will be removed.`
+        if (!window.confirm(msg)) return
+      }
+      newData = adjustWeekCount(newTermWeeks)
+    }
+
+    newData = {
+      ...newData,
+      appSettings: {
+        ...newData.appSettings,
+        className: className.trim() || 'Room 3',
+        schoolName: schoolName.trim(),
+        termWeeks: newTermWeeks,
+      },
+    }
+    onSave(newData)
+    setSavedMsg(true)
+    setTimeout(() => setSavedMsg(false), 2000)
+  }
+
+  function toggleSetting(key, value) {
+    onSave({
+      ...data,
+      appSettings: {
+        ...data.appSettings,
+        toggles: { ...data.appSettings.toggles, [key]: value },
+      },
+    })
   }
 
   return (
     <div style={styles.wrap}>
-      <h2 style={styles.title}>⚙️ Timetable Setup</h2>
-      <p style={styles.desc}>
-        This planner needs a timetable before you can start planning sessions.
-        For now, you can start from the standard Grade 3 timetable (the same
-        one used in the original planner) — a full custom builder is coming soon.
-      </p>
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Class details</div>
+        <div style={styles.sectionDesc}>Shown throughout the planner.</div>
 
-      <div style={styles.card}>
-        <div style={styles.cardTitle}>Standard Grade 3 Timetable</div>
-        <div style={styles.cardDesc}>
-          Circle, Learning Powers, Maths, Spelling, Maths to Self, Read to Self,
-          Writing, Reading, Afternoon — Monday to Friday, matching the layout
-          you're used to.
+        <div style={styles.field}>
+          <label style={styles.label}>Class name</label>
+          <input type="text" value={className} onChange={(e) => setClassName(e.target.value)} style={styles.input} />
         </div>
-        <button style={styles.button} onClick={useDefaultTimetable} disabled={busy}>
-          {busy ? 'Setting up…' : 'Use this timetable'}
-        </button>
+        <div style={styles.field}>
+          <label style={styles.label}>School name</label>
+          <input type="text" value={schoolName} onChange={(e) => setSchoolName(e.target.value)} style={styles.input} />
+        </div>
+        <div style={styles.field}>
+          <label style={styles.label}>Term length (weeks)</label>
+          <input type="number" min={1} max={15} value={termWeeks} onChange={(e) => setTermWeeks(e.target.value)} style={{ ...styles.input, maxWidth: 100 }} />
+          <p style={styles.hint}>Changing this adds or removes week tabs. You'll be asked to confirm if it would delete planned weeks.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button style={styles.primaryBtn} onClick={saveDetails}>Save details</button>
+          {savedMsg && <span style={styles.savedMsg}>Saved ✓</span>}
+        </div>
       </div>
 
-      <div style={styles.preview}>
-        <div style={styles.previewTitle}>Preview — what this includes:</div>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Time</th>
-              {DAYS.map(d => <th key={d} style={styles.th}>{d}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {DEFAULT_ROWS.filter(r => r.type === 'slot').map((row, i) => (
-              <tr key={i}>
-                <td style={styles.td}><strong>{row.name}</strong><br/><span style={styles.time}>{row.time}</span></td>
-                {DAYS.map(d => {
-                  const cell = row.days[d]
-                  let text = '—'
-                  if (cell?.fixed) text = cell.fixed.replace('\n', ' ')
-                  else if (cell?.plannable) text = DEFAULT_PLAN_SUBJECTS[cell.subject]?.label || cell.subject
-                  else if (cell?.sg) text = '(small groups)'
-                  else if (cell?.spelling) text = '(topic)'
-                  else if (cell?.rowspanned) text = ''
-                  return <td key={d} style={styles.td}>{text}</td>
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Session behaviour</div>
+        <div style={styles.sectionDesc}>Turn planning fields on or off for routine sessions.</div>
+        {TOGGLE_DEFINITIONS.map(t => (
+          <div key={t.key} style={styles.toggleRow}>
+            <div>
+              <div style={styles.toggleLabel}>{t.label}</div>
+              <div style={styles.toggleHint}>{t.hint}</div>
+            </div>
+            <label style={styles.switch}>
+              <input
+                type="checkbox"
+                checked={!!data.appSettings.toggles[t.key]}
+                onChange={(e) => toggleSetting(t.key, e.target.checked)}
+                style={{ opacity: 0, width: 0, height: 0 }}
+              />
+              <span style={{
+                ...styles.slider,
+                background: data.appSettings.toggles[t.key] ? '#3A86D4' : '#D4D9E5',
+              }}>
+                <span style={{
+                  ...styles.sliderKnob,
+                  transform: data.appSettings.toggles[t.key] ? 'translateX(18px)' : 'translateX(0)',
+                }} />
+              </span>
+            </label>
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
 const styles = {
-  wrap: { maxWidth: 760, margin: '0 auto', padding: '30px 20px' },
-  title: { fontSize: 20, fontWeight: 800, marginBottom: 8 },
-  desc: { fontSize: 13, color: '#7A849E', lineHeight: 1.6, marginBottom: 20 },
-  card: { background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 10, padding: '18px 20px', marginBottom: 24 },
-  cardTitle: { fontSize: 14, fontWeight: 700, marginBottom: 6 },
-  cardDesc: { fontSize: 12, color: '#7A849E', lineHeight: 1.5, marginBottom: 14 },
-  button: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  preview: { background: '#fff', border: '1px solid #D4D9E5', borderRadius: 10, padding: 16, overflowX: 'auto' },
-  previewTitle: { fontSize: 11, fontWeight: 800, color: '#7A849E', textTransform: 'uppercase', marginBottom: 10 },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 11 },
-  th: { textAlign: 'left', padding: '6px 8px', background: '#F0F2F7', fontWeight: 700, borderBottom: '1px solid #D4D9E5' },
-  td: { padding: '6px 8px', borderBottom: '1px solid #F0F2F7' },
-  time: { color: '#7A849E', fontSize: 10 },
+  wrap: { maxWidth: 720, margin: '0 auto', padding: '20px 20px' },
+  section: { background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 10, padding: '18px 20px', marginBottom: 16 },
+  sectionTitle: { fontSize: 14, fontWeight: 800, marginBottom: 4 },
+  sectionDesc: { fontSize: 11, color: '#7A849E', marginBottom: 14 },
+  field: { marginBottom: 12 },
+  label: { display: 'block', fontSize: 11, fontWeight: 700, color: '#7A849E', textTransform: 'uppercase', marginBottom: 5 },
+  input: { width: '100%', maxWidth: 280, padding: '8px 11px', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
+  hint: { fontSize: 10, color: '#7A849E', marginTop: 4 },
+  primaryBtn: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  savedMsg: { fontSize: 11, color: '#2EAF6E' },
+  toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #D4D9E5' },
+  toggleLabel: { fontSize: 12, fontWeight: 600 },
+  toggleHint: { fontSize: 10, color: '#7A849E', marginTop: 1 },
+  switch: { position: 'relative', width: 40, height: 22, flexShrink: 0, display: 'inline-block', cursor: 'pointer' },
+  slider: { position: 'absolute', inset: 0, borderRadius: 22, transition: 'background 0.15s' },
+  sliderKnob: { position: 'absolute', width: 18, height: 18, left: 2, top: 2, background: '#fff', borderRadius: '50%', transition: 'transform 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', display: 'block' },
 }
