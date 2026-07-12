@@ -59,6 +59,11 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
   }
 
+  function handleSaveNotes(notesKey, value) {
+    const newWeek = { ...activeWeek, notes: { ...activeWeek.notes, [notesKey]: value } }
+    onSave(withWeekUpdated(data, activeWeek.id, newWeek))
+  }
+
   if (!activeWeek) {
     return (
       <div style={styles.empty}>
@@ -119,6 +124,7 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
                   onAdd={openAdd}
                   onEdit={openEdit}
                   onDelete={quickDelete}
+                  onSaveNotes={handleSaveNotes}
                 />
               )
             })}
@@ -145,7 +151,49 @@ function blockColor(cls) {
   return '#888'
 }
 
-function RowRenderer({ row, week, onAdd, onEdit, onDelete }) {
+// Per-activity background colors for the fixed (non-plannable) blocks —
+// Circle, Learning Powers, PE/Art, Brain Break, Check-in, Assembly, etc.
+const FIXED_COLORS = {
+  's-circle': '#F3D6EE',
+  's-lp': '#CFE3F5',
+  's-pe': '#D3F0DD',
+  's-brain': '#F5E6C4',
+  's-checkin': '#F5E6C4',
+  's-assembly': '#DDCBF2',
+  's-mts': '#FBE0C0',
+  's-rts': '#D0F0DC',
+  's-science': '#F5F0C8',
+}
+
+function fixedColor(cls) {
+  return FIXED_COLORS[cls] || '#F0F2F7'
+}
+
+function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
+  const [editing, setEditing] = useState(false)
+  const value = week.notes?.[notesKey] || ''
+
+  return (
+    <div style={{ ...styles.notesCard, background: fixedColor(cls) }}>
+      <div style={styles.notesLabel}>{label}</div>
+      <div style={styles.notesSubLabel}>PLANNING NOTES</div>
+      {editing ? (
+        <textarea
+          autoFocus
+          defaultValue={value}
+          onBlur={(e) => { onSaveNotes(notesKey, e.target.value); setEditing(false) }}
+          style={styles.notesTextarea}
+        />
+      ) : (
+        <div style={styles.notesText} onClick={() => setEditing(true)}>
+          {value || '+ add notes'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RowRenderer({ row, week, onAdd, onEdit, onDelete, onSaveNotes }) {
   const cells = []
   let skip = 0
 
@@ -160,9 +208,25 @@ function RowRenderer({ row, week, onAdd, onEdit, onDelete }) {
     if (colSpan > 1) skip = colSpan - 1
 
     if (cell.fixed) {
+      if (cell.notesKey) {
+        cells.push(
+          <td key={day} rowSpan={rowSpan} style={styles.td}>
+            <NotesCard
+              cls={cell.cls}
+              label={cell.fixed}
+              notesKey={cell.notesKey}
+              week={week}
+              onSaveNotes={onSaveNotes}
+            />
+          </td>
+        )
+        continue
+      }
       cells.push(
         <td key={day} rowSpan={rowSpan} style={styles.td}>
-          <div style={styles.fixedCard}>{cell.fixed.split('\n').map((l, i) => <div key={i}>{l}</div>)}</div>
+          <div style={{ ...styles.fixedCard, background: fixedColor(cell.cls) }}>
+            {cell.fixed.split('\n').map((l, i) => <div key={i}>{l}</div>)}
+          </div>
         </td>
       )
       continue
@@ -184,7 +248,7 @@ function RowRenderer({ row, week, onAdd, onEdit, onDelete }) {
       const sgSlot = SG_SLOTS[cell.sgKey]
       cells.push(
         <td key={day} style={styles.td}>
-          <div style={{ ...styles.fixedCard, background: '#FFE8CC', minHeight: 56, fontSize: 10 }}>
+          <div style={{ ...styles.fixedCard, background: fixedColor(sgSlot?.cls), minHeight: 56, fontSize: 10 }}>
             {sgSlot?.label} groups
           </div>
         </td>
@@ -255,4 +319,9 @@ const styles = {
   cardResource: { fontSize: 9, marginTop: 3 },
   emptyCell: { borderRadius: 6, minHeight: 56, border: '1.5px dashed #D4D9E5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7A849E', fontSize: 18, cursor: 'pointer' },
   deleteBtn: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer', display: 'none' },
+  notesCard: { borderRadius: 6, padding: '10px 8px', minHeight: 140, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' },
+  notesLabel: { fontSize: 12, fontWeight: 800, marginBottom: 4 },
+  notesSubLabel: { fontSize: 8, fontWeight: 700, letterSpacing: 0.6, color: '#5A6478', marginBottom: 6 },
+  notesText: { fontSize: 10, color: '#5A6478', cursor: 'pointer', whiteSpace: 'pre-line', width: '100%' },
+  notesTextarea: { width: '100%', minHeight: 70, fontSize: 10, fontFamily: 'inherit', border: '1px solid #D4D9E5', borderRadius: 4, padding: 4, resize: 'vertical', boxSizing: 'border-box' },
 }
