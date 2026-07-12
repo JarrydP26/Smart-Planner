@@ -89,35 +89,38 @@ export default function TermView({ data, onSave, subj }) {
 
   return (
     <div style={styles.wrap}>
-      <div style={styles.header}>
+      <div className="no-print" style={styles.header}>
         <div style={styles.title}>
           <span style={{ ...styles.dot, background: acc }}></span>
           {subjMeta.label} — Term Overview
         </div>
-        {hasGroups && (
-          <div style={styles.groupControls}>
-            <select
-              value={activeGroupId || ''}
-              disabled={viewMode === 'all'}
-              onChange={(e) => setActiveGroupId(e.target.value)}
-              style={styles.groupSelect}
-            >
-              {groupCfg.groups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-            <div style={styles.modeToggle}>
-              <button
-                style={{ ...styles.modeBtn, ...(viewMode === 'single' ? styles.modeBtnActive : {}) }}
-                onClick={() => setViewMode('single')}
-              >My group</button>
-              <button
-                style={{ ...styles.modeBtn, ...(viewMode === 'all' ? styles.modeBtnActive : {}) }}
-                onClick={() => setViewMode('all')}
-              >All groups</button>
-            </div>
-          </div>
-        )}
+        <div style={styles.groupControls}>
+          {hasGroups && (
+            <>
+              <select
+                value={activeGroupId || ''}
+                disabled={viewMode === 'all'}
+                onChange={(e) => setActiveGroupId(e.target.value)}
+                style={styles.groupSelect}
+              >
+                {groupCfg.groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              <div style={styles.modeToggle}>
+                <button
+                  style={{ ...styles.modeBtn, ...(viewMode === 'single' ? styles.modeBtnActive : {}) }}
+                  onClick={() => setViewMode('single')}
+                >My group</button>
+                <button
+                  style={{ ...styles.modeBtn, ...(viewMode === 'all' ? styles.modeBtnActive : {}) }}
+                  onClick={() => setViewMode('all')}
+                >All groups</button>
+              </div>
+            </>
+          )}
+          <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
+        </div>
       </div>
 
       <textarea
@@ -263,6 +266,7 @@ const styles = {
   modeToggle: { display: 'flex', border: '1.5px solid #D4D9E5', borderRadius: 6, overflow: 'hidden' },
   modeBtn: { padding: '6px 10px', fontSize: 11, border: 'none', cursor: 'pointer', background: '#fff', color: '#1C2333' },
   modeBtnActive: { background: '#3A86D4', color: '#fff' },
+  printBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   summaryBox: { width: '100%', minHeight: 64, padding: '10px 12px', border: '1.5px solid #D4D9E5', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', marginBottom: 14, boxSizing: 'border-box' },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.07)', border: '1.5px solid #D4D9E5' },

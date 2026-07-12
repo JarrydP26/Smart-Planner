@@ -113,7 +113,7 @@ export default function WeeklyPlanner({ data, onSave }) {
   return (
     <div>
       {/* Week tabs */}
-      <div style={styles.tabBar}>
+      <div className="no-print" style={styles.tabBar}>
         {weeks.map((w) => (
           <button
             key={w.id}
@@ -127,6 +127,7 @@ export default function WeeklyPlanner({ data, onSave }) {
           <button style={styles.tabAdd} onClick={addWeek} title="Add next week">+</button>
         )}
         <button style={styles.blockOutBtn} onClick={() => setBlockOutOpen(true)}>🚫 Block out</button>
+        <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
       </div>
 
       <GroupBar planSubjects={planSubjects} data={data} myGroupPrefs={myGroupPrefs} onChangeGroup={setActiveGroupId} />
@@ -440,6 +441,7 @@ const styles = {
   tabActive: { background: '#F0F2F7', borderColor: '#D4D9E5', color: '#1C2333' },
   tabAdd: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px dashed #D4D9E5', background: 'none', fontSize: 14, color: '#7A849E', cursor: 'pointer' },
   blockOutBtn: { marginLeft: 'auto', padding: '6px 12px', borderRadius: 6, border: '1.5px solid #E8B0B0', background: '#FFF0F0', color: '#C0392B', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  printBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   tableWrap: { padding: '16px 20px', overflowX: 'auto' },
   table: { minWidth: 820, width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 8, overflow: 'hidden' },
   th: { padding: '9px 10px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E', background: '#F0F2F7', borderBottom: '2px solid #D4D9E5', textAlign: 'center' },

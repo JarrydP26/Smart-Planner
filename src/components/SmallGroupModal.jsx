@@ -23,7 +23,7 @@ export default function SmallGroupModal({ open, title, initial, onSave, onClear,
   }
 
   return (
-    <div style={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="no-print" style={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={styles.modal}>
         <button style={styles.closeBtn} onClick={onClose}>✕</button>
         <h2 style={styles.title}>{title}</h2>

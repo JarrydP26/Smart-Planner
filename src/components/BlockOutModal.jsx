@@ -42,7 +42,7 @@ export default function BlockOutModal({ open, data, activeWeekId, onSave, onClos
   })
 
   return (
-    <div style={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="no-print" style={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={styles.modal}>
         <button style={styles.closeBtn} onClick={onClose}>✕</button>
         <h2 style={styles.title}>🚫 Block out</h2>
