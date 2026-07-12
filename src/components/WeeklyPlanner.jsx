@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
 import SmallGroupModal from './SmallGroupModal'
+import BlockOutModal from './BlockOutModal'
 
 export default function WeeklyPlanner({ data, onSave }) {
   const rows = data.rows || DEFAULT_ROWS
@@ -16,6 +17,7 @@ export default function WeeklyPlanner({ data, onSave }) {
   const [myGroupPrefs, setMyGroupPrefs] = useState(loadMyGroupPrefs)
   const [modalCtx, setModalCtx] = useState(null) // { subj, day, groupId, existing } | null
   const [sgModalCtx, setSgModalCtx] = useState(null) // { sgKey, day } | null
+  const [blockOutOpen, setBlockOutOpen] = useState(false)
 
   function openSgModal(sgKey, day) {
     setSgModalCtx({ sgKey, day })
@@ -124,6 +126,7 @@ export default function WeeklyPlanner({ data, onSave }) {
         {weeks.length < 12 && (
           <button style={styles.tabAdd} onClick={addWeek} title="Add next week">+</button>
         )}
+        <button style={styles.blockOutBtn} onClick={() => setBlockOutOpen(true)}>🚫 Block out</button>
       </div>
 
       <GroupBar planSubjects={planSubjects} data={data} myGroupPrefs={myGroupPrefs} onChangeGroup={setActiveGroupId} />
@@ -188,6 +191,14 @@ export default function WeeklyPlanner({ data, onSave }) {
         onSave={handleSaveSgData}
         onClear={handleClearSgData}
         onClose={closeSgModal}
+      />
+
+      <BlockOutModal
+        open={blockOutOpen}
+        data={data}
+        activeWeekId={activeWeek.id}
+        onSave={onSave}
+        onClose={() => setBlockOutOpen(false)}
       />
     </div>
   )
@@ -285,6 +296,21 @@ function RowRenderer({ row, week, data, myGroupPrefs, onAdd, onEdit, onDelete, o
     const rowSpan = cell.rowspan || 1
     const colSpan = cell.colspan || 1
     if (colSpan > 1) skip = colSpan - 1
+
+    // Universal block check — whole day OR this specific row blocked.
+    // Overrides everything else in the cell if present.
+    const blockLabel = getBlockLabel(week, row.name, day)
+    if (blockLabel) {
+      cells.push(
+        <td key={day} rowSpan={rowSpan} style={{ ...styles.td, background: '#FFF0F0' }}>
+          <div style={styles.blockBanner} title={`${blockLabel} — manage via Block Out`}>
+            <div style={styles.blockIcon}>🚫</div>
+            <div>{blockLabel}</div>
+          </div>
+        </td>
+      )
+      continue
+    }
 
     if (cell.fixed) {
       if (cell.notesKey) {
@@ -413,6 +439,7 @@ const styles = {
   tab: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px solid transparent', background: 'none', fontSize: 11, fontWeight: 600, color: '#7A849E', cursor: 'pointer' },
   tabActive: { background: '#F0F2F7', borderColor: '#D4D9E5', color: '#1C2333' },
   tabAdd: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px dashed #D4D9E5', background: 'none', fontSize: 14, color: '#7A849E', cursor: 'pointer' },
+  blockOutBtn: { marginLeft: 'auto', padding: '6px 12px', borderRadius: 6, border: '1.5px solid #E8B0B0', background: '#FFF0F0', color: '#C0392B', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   tableWrap: { padding: '16px 20px', overflowX: 'auto' },
   table: { minWidth: 820, width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 8, overflow: 'hidden' },
   th: { padding: '9px 10px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E', background: '#F0F2F7', borderBottom: '2px solid #D4D9E5', textAlign: 'center' },
@@ -446,4 +473,6 @@ const styles = {
   sgCellLabel: { fontSize: 7, fontWeight: 800, textTransform: 'uppercase', color: '#5A6478' },
   sgNames: { fontSize: 9, fontWeight: 600 },
   sgEmptyHint: { fontSize: 9, fontStyle: 'italic', color: '#5A6478', textAlign: 'center', padding: '10px 0' },
+  blockBanner: { borderRadius: 6, minHeight: 40, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FFF0F0', border: '1px dashed #E8B0B0', color: '#C0392B', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '6px 4px' },
+  blockIcon: { fontSize: 14, marginBottom: 2 },
 }

@@ -1,5 +1,5 @@
 import { DAYS, DEFAULT_PLAN_SUBJECTS, SUBJECT_DOT_COLOR } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, groupsEnabledFor, getEffectiveGroupId } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, groupsEnabledFor, getEffectiveGroupId, getBlockLabel } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import { useState } from 'react'
@@ -166,10 +166,16 @@ export default function TermView({ data, onSave, subj }) {
                     />
                   </td>
                   {days.map(day => {
+                    const blockLabel = getBlockLabel(week, subjMeta.label, day)
                     const session = getSessionFor(week, subj, day, activeGroupId)
                     return (
                       <td key={day} style={styles.cell}>
-                        {session ? (
+                        {blockLabel ? (
+                          <div style={styles.blockBanner} title={`${blockLabel} — manage via Block Out`}>
+                            <div style={styles.blockIcon}>🚫</div>
+                            <div>{blockLabel}</div>
+                          </div>
+                        ) : session ? (
                           <div style={styles.sessionCard} onClick={() => openEdit(week.id, day, activeGroupId, session)}>
                             <div style={{ ...styles.cardTitle, color: acc }}>{session.title}</div>
                             <div style={styles.cardPreview}>{linkify(session.detail)}</div>
@@ -277,4 +283,6 @@ const styles = {
   miniEmptyCard: { border: '1px dashed #D4D9E5', borderRadius: 4, padding: '4px 6px', cursor: 'pointer', fontSize: 9, color: '#B0B6C4', display: 'flex', justifyContent: 'space-between' },
   miniCardGroup: { fontSize: 8, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E' },
   miniCardTitle: { fontSize: 10, fontWeight: 700 },
+  blockBanner: { borderRadius: 4, minHeight: 64, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FFF0F0', border: '1px dashed #E8B0B0', color: '#C0392B', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '6px 4px' },
+  blockIcon: { fontSize: 14, marginBottom: 2 },
 }
