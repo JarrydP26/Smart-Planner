@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DEFAULT_PLAN_SUBJECTS } from '../lib/timetableDefaults'
+import { DEFAULT_PLAN_SUBJECTS, SG_CELLS } from '../lib/timetableDefaults'
 import { withNewWeek, withNextWeek, withRelabeledTerm, getMonday } from '../lib/plannerHelpers'
 
 const TOGGLE_DEFINITIONS = [
@@ -135,6 +135,17 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
     })
   }
 
+  function renameSgCellLabel(id, newLabel) {
+    if (!newLabel.trim()) return
+    onSave({
+      ...data,
+      appSettings: {
+        ...data.appSettings,
+        sgCellLabels: { ...data.appSettings.sgCellLabels, [id]: newLabel.trim() },
+      },
+    })
+  }
+
   function deleteAbilityGroup(subj, groupId) {
     if (!window.confirm('Delete this group? Planning saved under it will be hidden (not deleted) unless you re-add a group with matching data.')) return
     snapshotForUndo?.('delete ability group')
@@ -258,6 +269,24 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
           )
         })}
       </div>
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Small group grid labels</div>
+        <div style={styles.sectionDesc}>Rename the six group cells used in the Maths to Self / Read to Self grids to match your actual class groupings.</div>
+        <div style={styles.groupList}>
+          {SG_CELLS.map(c => (
+            <div key={c.id} style={styles.sgLabelRow}>
+              <span style={styles.sgLabelDefault}>{c.label}</span>
+              <input
+                type="text"
+                defaultValue={data.appSettings.sgCellLabels?.[c.id] || c.label}
+                onBlur={(e) => renameSgCellLabel(c.id, e.target.value)}
+                style={styles.sgLabelInput}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -281,6 +310,9 @@ const styles = {
   sliderKnob: { position: 'absolute', width: 18, height: 18, left: 2, top: 2, background: '#fff', borderRadius: '50%', transition: 'transform 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', display: 'block' },
   groupSubjBlock: { padding: '10px 0', borderBottom: '1px solid #D4D9E5' },
   groupList: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  sgLabelRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '6px 0', borderBottom: '1px solid #F0F2F7' },
+  sgLabelDefault: { fontSize: 11, color: '#7A849E', flex: 1 },
+  sgLabelInput: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, fontFamily: 'inherit', width: 160 },
   groupChip: { display: 'flex', alignItems: 'center', gap: 4, background: '#F0F2F7', border: '1px solid #D4D9E5', borderRadius: 6, padding: '3px 4px 3px 8px' },
   groupChipInput: { border: 'none', background: 'none', fontSize: 11, fontFamily: 'inherit', width: 90, fontWeight: 600 },
   groupChipDelete: { border: 'none', background: 'none', color: '#C0392B', fontSize: 11, cursor: 'pointer', padding: '2px 4px' },

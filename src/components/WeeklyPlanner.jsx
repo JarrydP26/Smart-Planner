@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS, SUBJECT_DOT_COLOR, DEFAULT_SPECIALIST_BLOCKS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans, getResolvedSgCells } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
@@ -41,6 +41,21 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
     const { sgKey, day } = sgModalCtx
     const newWeek = withSgDataSet(activeWeek, sgKey, day, {})
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
+    closeSgModal()
+  }
+
+  function handleCopySgForward() {
+    const { sgKey, day } = sgModalCtx
+    const idx = weeks.findIndex(w => w.id === activeWeek.id)
+    const nextWeek = weeks[idx + 1]
+    if (!nextWeek) { window.alert('There is no next week to copy into.'); return }
+    const label = SG_SLOTS[sgKey]?.label || 'these groups'
+    const nextLabel = nextWeek.weekLabel || nextWeek.label
+    if (!window.confirm(`Copy ${label} on ${day} into ${nextLabel}? This will overwrite that week's existing data there.`)) return
+    snapshotForUndo?.('copy groups forward')
+    const sourceData = getSgData(activeWeek, sgKey, day)
+    const updatedNextWeek = withSgDataSet(nextWeek, sgKey, day, sourceData)
+    onSave(withWeekUpdated(data, nextWeek.id, updatedNextWeek))
     closeSgModal()
   }
 
@@ -131,6 +146,7 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
         {weeks.length < 12 && (
           <button style={styles.tabAdd} onClick={addWeek} title="Add next week">+</button>
         )}
+        <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
         <button style={styles.blockOutBtn} onClick={() => setBlockOutOpen(true)}>🚫 Block out</button>
         <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
       </div>
@@ -195,9 +211,11 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
         open={!!sgModalCtx}
         title={sgModalCtx ? `${SG_SLOTS[sgModalCtx.sgKey]?.label} — ${sgModalCtx.day} groups` : ''}
         initial={sgModalCtx ? getSgData(activeWeek, sgModalCtx.sgKey, sgModalCtx.day) : null}
+        sgCells={getResolvedSgCells(data)}
         onSave={handleSaveSgData}
         onClear={handleClearSgData}
         onClose={closeSgModal}
+        onCopyForward={handleCopySgForward}
       />
 
       <BlockOutModal
@@ -304,7 +322,7 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
     // the affected rows' actual cells are just null underneath this.
     if (merge?.label) {
       cells.push(
-        <td key={day} rowSpan={merge.span || 1} style={{ ...styles.td, background: fixedColor('s-specialist') }}>
+        <td key={day} rowSpan={merge.span || 1} style={{ ...styles.td, background: merge.color || fixedColor('s-specialist') }}>
           <NotesCard cls="s-specialist" label={merge.label} notesKey={merge.notesKey} week={week} onSaveNotes={onSaveNotes} />
         </td>
       )
@@ -368,7 +386,8 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
       }
 
       const sgData = getSgData(week, cell.sgKey, day)
-      const hasData = sgData.desc || SG_CELLS.some(c => sgData[c.id])
+      const resolvedSgCells = getResolvedSgCells(data)
+      const hasData = sgData.desc || resolvedSgCells.some(c => sgData[c.id])
 
       cells.push(
         <td key={day} style={styles.td}>
@@ -380,7 +399,7 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
               <>
                 {sgData.desc && <div style={styles.sgDesc}>{sgData.desc}</div>}
                 <div style={styles.sgGrid}>
-                  {SG_CELLS.map(c => (
+                  {resolvedSgCells.map(c => (
                     <div key={c.id} style={styles.sgCell}>
                       <div style={styles.sgCellLabel}>{c.label}</div>
                       <div style={styles.sgNames}>{sgData[c.id] || '—'}</div>
@@ -446,7 +465,8 @@ const styles = {
   tab: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px solid transparent', background: 'none', fontSize: 11, fontWeight: 600, color: '#7A849E', cursor: 'pointer' },
   tabActive: { background: '#F0F2F7', borderColor: '#D4D9E5', color: '#1C2333' },
   tabAdd: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px dashed #D4D9E5', background: 'none', fontSize: 14, color: '#7A849E', cursor: 'pointer' },
-  blockOutBtn: { marginLeft: 'auto', padding: '6px 12px', borderRadius: 6, border: '1.5px solid #E8B0B0', background: '#FFF0F0', color: '#C0392B', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  printBtn: { marginLeft: 'auto', padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  blockOutBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #E8B0B0', background: '#FFF0F0', color: '#C0392B', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   printBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   tableWrap: { padding: '16px 20px', overflowX: 'auto' },
   table: { minWidth: 820, width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 8, overflow: 'hidden' },

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SUBJECT_DOT_COLOR, DEFAULT_SPECIALIST_BLOCKS } from '../lib/timetableDefaults'
-import { withNewWeek, getMonday } from '../lib/plannerHelpers'
+import { withNewWeek, withNextWeek, getMonday } from '../lib/plannerHelpers'
 
 // Full custom timetable builder, ported from the HTML version's manual
 // editor (image-upload/AI-reading step intentionally left out for now).
@@ -15,6 +15,21 @@ import { withNewWeek, getMonday } from '../lib/plannerHelpers'
 // session block at once. See computeSpecialistSpans in plannerHelpers.js for
 // how this merges rows and computeMergedSpans's prior notesKey approach it replaced.
 
+// Case-blank planners previously only ever got ONE week to start with, even
+// though the term-length setting already said 10 — meaning the week count
+// and the setting disagreed until the teacher happened to change that
+// setting to a different number. This builds out the full term upfront,
+// matching whatever appSettings.termWeeks already says (default 10), so the
+// two stay in sync from the very first save.
+function withInitialTermWeeks(data, planSubjects) {
+  const targetWeeks = data.appSettings?.termWeeks || 10
+  let result = withNewWeek(data, planSubjects, getMonday(new Date()))
+  for (let i = 1; i < targetWeeks; i++) {
+    result = withNextWeek(result, planSubjects)
+  }
+  return result
+}
+
 export default function TimetableSetup({ data, onSave, onDone }) {
   const [draftRows, setDraftRows] = useState(null) // null = showing the initial choice screen
   const [specialistDraft, setSpecialistDraft] = useState(null)
@@ -24,7 +39,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     setBusy(true)
     const withTimetable = { ...data, rows: null, planSubjects: null, specialistBlocks: null }
     const finalData = data.weeks.length === 0
-      ? withNewWeek(withTimetable, DEFAULT_PLAN_SUBJECTS, getMonday(new Date()))
+      ? withInitialTermWeeks(withTimetable, DEFAULT_PLAN_SUBJECTS)
       : withTimetable
     await onSave(finalData)
     setBusy(false)
@@ -90,7 +105,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     if (!blockCls) {
       delete next[day]
     } else {
-      next[day] = { blockCls, name: next[day]?.name || '' }
+      next[day] = { blockCls, name: next[day]?.name || '', color: next[day]?.color || '#D6ECE6' }
     }
     setSpecialistDraft(next)
   }
@@ -98,6 +113,11 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   function setSpecialistNameForDay(day, name) {
     if (!specialistDraft[day]) return
     setSpecialistDraft({ ...specialistDraft, [day]: { ...specialistDraft[day], name } })
+  }
+
+  function setSpecialistColorForDay(day, color) {
+    if (!specialistDraft[day]) return
+    setSpecialistDraft({ ...specialistDraft, [day]: { ...specialistDraft[day], color } })
   }
 
   async function saveDraftTimetable() {
@@ -149,7 +169,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     const newSpecialistBlocks = {}
     Object.entries(specialistDraft).forEach(([day, spec]) => {
       if (spec?.blockCls && spec.name?.trim()) {
-        newSpecialistBlocks[day] = { blockCls: spec.blockCls, name: spec.name.trim() }
+        newSpecialistBlocks[day] = { blockCls: spec.blockCls, name: spec.name.trim(), color: spec.color || '#D6ECE6' }
       }
     })
 
@@ -168,7 +188,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
     let finalData = { ...data, rows: newRows, planSubjects: newPlanSubjects, specialistBlocks: newSpecialistBlocks, weeks }
     if (finalData.weeks.length === 0) {
-      finalData = withNewWeek(finalData, newPlanSubjects, getMonday(new Date()))
+      finalData = withInitialTermWeeks(finalData, newPlanSubjects)
     }
 
     await onSave(finalData)
@@ -248,13 +268,22 @@ export default function TimetableSetup({ data, onSave, onDone }) {
                 {blockOptions.map(b => <option key={b.cls} value={b.cls}>{b.label}</option>)}
               </select>
               {spec?.blockCls && (
-                <input
-                  type="text"
-                  value={spec.name || ''}
-                  placeholder="e.g. PE / Art"
-                  onChange={(e) => setSpecialistNameForDay(day, e.target.value)}
-                  style={styles.rowInputWide}
-                />
+                <>
+                  <input
+                    type="text"
+                    value={spec.name || ''}
+                    placeholder="e.g. PE / Art"
+                    onChange={(e) => setSpecialistNameForDay(day, e.target.value)}
+                    style={styles.rowInputWide}
+                  />
+                  <input
+                    type="color"
+                    value={spec.color || '#D6ECE6'}
+                    onChange={(e) => setSpecialistColorForDay(day, e.target.value)}
+                    title="Colour for this specialist block"
+                    style={styles.colorSwatch}
+                  />
+                </>
               )}
             </div>
           )
@@ -333,6 +362,35 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
         onChange={(e) => onUpdate(idx, 'name', e.target.value)}
         style={styles.rowInputName}
       />
+      <select
+        value={rowType}
+        onChange={(e) => {
+          const v = e.target.value
+          onUpdate(idx, { plannable: v === 'plannable', sgKey: v === 'sg' ? (row.sgKey || 'mts') : null })
+        }}
+        style={styles.rowSelect}
+      >
+        <option value="fixed">Fixed</option>
+        <option value="plannable">Plannable</option>
+        <option value="sg">Small group grid</option>
+      </select>
+      <div style={styles.typeExtra}>
+        {rowType === 'sg' && (
+          <select value={row.sgKey || 'mts'} onChange={(e) => onUpdate(idx, 'sgKey', e.target.value)} style={styles.rowSelect}>
+            <option value="mts">Maths to Self</option>
+            <option value="rts">Read to Self</option>
+          </select>
+        )}
+        {rowType === 'plannable' && (
+          <input
+            type="color"
+            value={row.accColor || '#3A86D4'}
+            onChange={(e) => onUpdate(idx, 'accColor', e.target.value)}
+            title="Colour for this subject's session cards"
+            style={styles.colorSwatch}
+          />
+        )}
+      </div>
       <div style={styles.dayToggles}>
         {DAYS.map(d => {
           const on = row.activeDays ? row.activeDays.includes(d) : true
@@ -347,33 +405,6 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
           )
         })}
       </div>
-      <select
-        value={rowType}
-        onChange={(e) => {
-          const v = e.target.value
-          onUpdate(idx, { plannable: v === 'plannable', sgKey: v === 'sg' ? (row.sgKey || 'mts') : null })
-        }}
-        style={styles.rowSelect}
-      >
-        <option value="fixed">Fixed</option>
-        <option value="plannable">Plannable</option>
-        <option value="sg">Small group grid</option>
-      </select>
-      {rowType === 'sg' && (
-        <select value={row.sgKey || 'mts'} onChange={(e) => onUpdate(idx, 'sgKey', e.target.value)} style={styles.rowSelect}>
-          <option value="mts">Maths to Self</option>
-          <option value="rts">Read to Self</option>
-        </select>
-      )}
-      {rowType === 'plannable' && (
-        <input
-          type="color"
-          value={row.accColor || '#3A86D4'}
-          onChange={(e) => onUpdate(idx, 'accColor', e.target.value)}
-          title="Colour for this subject's session cards"
-          style={styles.colorSwatch}
-        />
-      )}
       <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
     </div>
   )
@@ -472,6 +503,7 @@ const styles = {
   rowInputTime: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 6px', fontSize: 12, width: 90 },
   rowInputName: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, flex: 1, minWidth: 140 },
   rowInputWide: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, flex: 1 },
+  typeExtra: { width: 115, display: 'flex', justifyContent: 'flex-start' },
   dayToggles: { display: 'flex', gap: 3 },
   dayToggle: { width: 22, height: 22, borderRadius: 4, border: '1px solid #D4D9E5', background: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', color: '#B0B6C4' },
   dayToggleActive: { background: '#3A86D4', color: '#fff', borderColor: '#3A86D4' },

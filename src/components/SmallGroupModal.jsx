@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { SG_CELLS } from '../lib/timetableDefaults'
+import { SG_CELLS as DEFAULT_SG_CELLS } from '../lib/timetableDefaults'
 
-export default function SmallGroupModal({ open, title, initial, onSave, onClear, onClose }) {
+export default function SmallGroupModal({ open, title, initial, sgCells, onSave, onClear, onClose, onCopyForward }) {
+  const cellsMeta = sgCells || DEFAULT_SG_CELLS
   const [desc, setDesc] = useState('')
   const [downOnBackdrop, setDownOnBackdrop] = useState(false)
   const [cells, setCells] = useState({})
@@ -10,7 +11,7 @@ export default function SmallGroupModal({ open, title, initial, onSave, onClear,
     if (open) {
       setDesc(initial?.desc || '')
       const next = {}
-      SG_CELLS.forEach(c => { next[c.id] = initial?.[c.id] || '' })
+      cellsMeta.forEach(c => { next[c.id] = initial?.[c.id] || '' })
       setCells(next)
     }
   }, [open, initial])
@@ -19,7 +20,7 @@ export default function SmallGroupModal({ open, title, initial, onSave, onClear,
 
   function handleSave() {
     const obj = { desc: desc.trim() }
-    SG_CELLS.forEach(c => { obj[c.id] = (cells[c.id] || '').trim() })
+    cellsMeta.forEach(c => { obj[c.id] = (cells[c.id] || '').trim() })
     onSave(obj)
   }
 
@@ -44,20 +45,31 @@ export default function SmallGroupModal({ open, title, initial, onSave, onClear,
         </div>
 
         <div style={styles.grid}>
-          {SG_CELLS.map(c => (
+          {cellsMeta.map(c => (
             <div key={c.id} style={styles.field}>
               <label style={styles.label}>{c.label}</label>
-              <input
-                type="text" value={cells[c.id] || ''}
-                onChange={(e) => setCells({ ...cells, [c.id]: e.target.value })}
-                style={styles.input}
-              />
+              <div style={styles.inputWithClear}>
+                <input
+                  type="text" value={cells[c.id] || ''}
+                  onChange={(e) => setCells({ ...cells, [c.id]: e.target.value })}
+                  style={styles.input}
+                />
+                {cells[c.id] && (
+                  <button
+                    type="button"
+                    title={`Clear ${c.label}`}
+                    onClick={() => setCells({ ...cells, [c.id]: '' })}
+                    style={styles.cellClearBtn}
+                  >✕</button>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         <div style={styles.actions}>
           <button style={styles.dangerBtn} onClick={onClear}>Clear</button>
+          {onCopyForward && <button style={styles.outlineBtn} onClick={onCopyForward}>➡️ Copy to next week</button>}
           <button style={styles.outlineBtn} onClick={onClose}>Cancel</button>
           <button style={styles.primaryBtn} onClick={handleSave}>Save</button>
         </div>
@@ -73,7 +85,9 @@ const styles = {
   title: { fontSize: 16, fontWeight: 700, marginBottom: 14 },
   field: { marginBottom: 12 },
   label: { display: 'block', fontSize: 11, fontWeight: 700, color: '#7A849E', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
-  input: { width: '100%', padding: '8px 10px', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
+  input: { width: '100%', padding: '8px 26px 8px 10px', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
+  inputWithClear: { position: 'relative' },
+  cellClearBtn: { position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#B0B6C4', fontSize: 12, cursor: 'pointer', padding: 4 },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' },
   actions: { display: 'flex', gap: 7, justifyContent: 'flex-end', marginTop: 12 },
   dangerBtn: { padding: '7px 13px', borderRadius: 7, border: 'none', background: '#FFE8E8', color: '#C0392B', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginRight: 'auto' },
