@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { DAYS, DEFAULT_ROWS } from '../lib/timetableDefaults'
 import { getBlockableRowNames, withDayBlockSet, withRowBlockSet, withBlockRemoved, withWeekUpdated } from '../lib/plannerHelpers'
 
-export default function BlockOutModal({ open, data, activeWeekId, onSave, onClose }) {
+export default function BlockOutModal({ open, data, activeWeekId, onSave, onClose, snapshotForUndo }) {
   const rows = data?.rows || DEFAULT_ROWS
   const rowNames = getBlockableRowNames(rows)
 
@@ -26,6 +26,7 @@ export default function BlockOutModal({ open, data, activeWeekId, onSave, onClos
   }
 
   function removeBlock(type, key) {
+    snapshotForUndo?.('remove block out')
     const newWeek = withBlockRemoved(week, type, key)
     onSave(withWeekUpdated(data, week.id, newWeek))
   }

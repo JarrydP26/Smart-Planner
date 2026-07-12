@@ -7,7 +7,7 @@ import SessionModal from './SessionModal'
 import SmallGroupModal from './SmallGroupModal'
 import BlockOutModal from './BlockOutModal'
 
-export default function WeeklyPlanner({ data, onSave }) {
+export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
   const rows = data.rows || DEFAULT_ROWS
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const weeks = data.weeks
@@ -35,6 +35,7 @@ export default function WeeklyPlanner({ data, onSave }) {
   }
 
   function handleClearSgData() {
+    snapshotForUndo?.('clear groups')
     const { sgKey, day } = sgModalCtx
     const newWeek = withSgDataSet(activeWeek, sgKey, day, {})
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
@@ -83,6 +84,7 @@ export default function WeeklyPlanner({ data, onSave }) {
   }
 
   function handleDeleteSession() {
+    snapshotForUndo?.('delete session')
     const { subj, day, groupId } = modalCtx
     const newWeek = withSessionSet(activeWeek, subj, day, groupId, null)
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
@@ -91,6 +93,7 @@ export default function WeeklyPlanner({ data, onSave }) {
 
   function quickDelete(subj, day) {
     if (!window.confirm('Remove this session?')) return
+    snapshotForUndo?.('delete session')
     const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
     const newWeek = withSessionSet(activeWeek, subj, day, groupId, null)
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
@@ -200,6 +203,7 @@ export default function WeeklyPlanner({ data, onSave }) {
         activeWeekId={activeWeek.id}
         onSave={onSave}
         onClose={() => setBlockOutOpen(false)}
+        snapshotForUndo={snapshotForUndo}
       />
     </div>
   )

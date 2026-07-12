@@ -5,7 +5,7 @@ import { linkify } from '../lib/linkify'
 import { useState } from 'react'
 import SessionModal from './SessionModal'
 
-export default function TermView({ data, onSave, subj }) {
+export default function TermView({ data, onSave, subj, snapshotForUndo }) {
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const subjMeta = planSubjects[subj]
   const days = subjMeta?.days || []
@@ -52,6 +52,7 @@ export default function TermView({ data, onSave, subj }) {
   }
 
   function handleDeleteSession() {
+    snapshotForUndo?.('delete session')
     const { weekId, day, groupId } = modalCtx
     const week = data.weeks.find(w => w.id === weekId)
     const newWeek = withSessionSet(week, subj, day, groupId, null)
@@ -73,6 +74,7 @@ export default function TermView({ data, onSave, subj }) {
       })
     })
     if (cleared > 0) {
+      snapshotForUndo?.(`clear ${subj} week`)
       onSave(withWeekUpdated(data, weekId, newWeek))
     }
   }

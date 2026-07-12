@@ -11,7 +11,7 @@ const TOGGLE_DEFINITIONS = [
   { key: 'brainBreak', label: 'Brain Break — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
 ]
 
-export default function Settings({ data, onSave }) {
+export default function Settings({ data, onSave, snapshotForUndo }) {
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const [className, setClassName] = useState(data.appSettings.className)
   const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
@@ -55,6 +55,7 @@ export default function Settings({ data, onSave }) {
           ? `Reducing to ${newTermWeeks} weeks will DELETE the last ${removedCount} week(s), which contain planned content. Continue?`
           : `Reduce to ${newTermWeeks} weeks? The last ${removedCount} empty week(s) will be removed.`
         if (!window.confirm(msg)) return
+        snapshotForUndo?.('reduce term weeks')
       }
       newData = adjustWeekCount(newTermWeeks)
     }
@@ -136,6 +137,7 @@ export default function Settings({ data, onSave }) {
 
   function deleteAbilityGroup(subj, groupId) {
     if (!window.confirm('Delete this group? Planning saved under it will be hidden (not deleted) unless you re-add a group with matching data.')) return
+    snapshotForUndo?.('delete ability group')
     const cfg = data.appSettings.abilityGroups[subj]
     const groups = cfg.groups.filter(g => g.id !== groupId)
     const newCfg = { ...cfg, groups, enabled: groups.length ? cfg.enabled : false }
