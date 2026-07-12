@@ -66,11 +66,11 @@ export const SG_SLOTS = {
 }
 
 export const SG_CELLS = [
-  { id: 'r3a', label: 'Rm3 – Group A' },
-  { id: 'r3b', label: 'Rm3 – Group B' },
+  { id: 'r3a', label: 'Class 1 – A' },
+  { id: 'r3b', label: 'Class 1 – B' },
   { id: 'c2a', label: 'Class 2 – A' },
-  { id: 'c3a', label: 'Class 3 – A' },
   { id: 'c2b', label: 'Class 2 – B' },
+  { id: 'c3a', label: 'Class 3 – A' },
   { id: 'c3b', label: 'Class 3 – B' },
 ]
 
