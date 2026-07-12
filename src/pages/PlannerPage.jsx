@@ -15,8 +15,25 @@ export default function PlannerPage() {
   const [plannerLoading, setPlannerLoading] = useState(true)
   const [plannerError, setPlannerError] = useState('')
   const [view, setView] = useState('weekly') // 'weekly' | 'settings' | a subject key
+  const [undoSnapshot, setUndoSnapshot] = useState(null)
+  const [undoLabel, setUndoLabel] = useState('')
 
   const { data, loading: dataLoading, error: dataError, saving, save, saveNow } = usePlannerData(plannerId)
+
+  // Call this right before a destructive action so it can be undone.
+  // Takes the CURRENT data explicitly (pass the same `data` in scope) since
+  // this needs to snapshot the state as it is right before the change.
+  function snapshotForUndo(label) {
+    setUndoSnapshot(data)
+    setUndoLabel(label)
+  }
+
+  function performUndo() {
+    if (!undoSnapshot) return
+    save(undoSnapshot)
+    setUndoSnapshot(null)
+    setUndoLabel('')
+  }
 
   useEffect(() => {
     async function load() {
@@ -79,6 +96,11 @@ export default function PlannerPage() {
         <div className="no-print" style={styles.topBar}>
           <button style={styles.backBtn} onClick={() => navigate('/')}>← All planners</button>
           <span style={styles.plannerName}>{planner.name}</span>
+          {undoSnapshot && (
+            <button style={styles.undoBtn} title={`Undo: ${undoLabel}`} onClick={performUndo}>
+              ↩️ Undo: {undoLabel}
+            </button>
+          )}
           <span style={styles.saveStatus}>{saving ? 'Saving…' : ''}</span>
         </div>
 
@@ -86,11 +108,11 @@ export default function PlannerPage() {
           {isBlank ? (
             <TimetableSetup data={data} onSave={saveNow} />
           ) : view === 'weekly' ? (
-            <WeeklyPlanner data={data} onSave={save} />
+            <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
           ) : view === 'settings' ? (
-            <Settings data={data} onSave={save} />
+            <Settings data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
           ) : planSubjects[view] ? (
-            <TermView data={data} onSave={save} subj={view} />
+            <TermView data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
           ) : (
             <div style={{ padding: 30 }}>Unknown view.</div>
           )}
@@ -124,6 +146,7 @@ const styles = {
   main: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
   topBar: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#fff', borderBottom: '1px solid #D4D9E5' },
   backBtn: { fontSize: 12, padding: '6px 12px', border: '1.5px solid #D4D9E5', borderRadius: 6, background: 'transparent', cursor: 'pointer' },
+  undoBtn: { fontSize: 11, padding: '6px 12px', border: '1.5px solid #D4D9E5', borderRadius: 6, background: '#F0F2F7', cursor: 'pointer', fontWeight: 600 },
   plannerName: { fontSize: 14, fontWeight: 700 },
   saveStatus: { fontSize: 11, color: '#7A849E', marginLeft: 'auto' },
   center: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" },
