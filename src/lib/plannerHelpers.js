@@ -154,4 +154,35 @@ export function withSgDataSet(week, sgKey, day, obj) {
   return { ...week, smallGroups: { ...week.smallGroups, [key]: obj } }
 }
 
+// Block Out — marks a whole day, or one specific row on one day, as
+// unavailable (excursions, assemblies, etc). Checked before any other cell
+// content so it overrides everything else for that cell.
+export function getBlockLabel(week, rowName, day) {
+  return (week.dayBlocks && week.dayBlocks[day]) || (week.rowBlocks && week.rowBlocks[`${rowName}_${day}`]) || null
+}
+
+export function withDayBlockSet(week, day, eventName) {
+  return { ...week, dayBlocks: { ...week.dayBlocks, [day]: eventName } }
+}
+
+export function withRowBlockSet(week, rowName, day, eventName) {
+  return { ...week, rowBlocks: { ...week.rowBlocks, [`${rowName}_${day}`]: eventName } }
+}
+
+export function withBlockRemoved(week, type, key) {
+  if (type === 'day') {
+    const dayBlocks = { ...week.dayBlocks }
+    delete dayBlocks[key]
+    return { ...week, dayBlocks }
+  }
+  const rowBlocks = { ...week.rowBlocks }
+  delete rowBlocks[key]
+  return { ...week, rowBlocks }
+}
+
+// All named, blockable slot rows in the timetable, in display order.
+export function getBlockableRowNames(rows) {
+  return rows.filter(r => r.type === 'slot' && r.name).map(r => r.name)
+}
+
 export { getMonday }
