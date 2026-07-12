@@ -3,6 +3,7 @@ import { SG_CELLS } from '../lib/timetableDefaults'
 
 export default function SmallGroupModal({ open, title, initial, onSave, onClear, onClose }) {
   const [desc, setDesc] = useState('')
+  const [downOnBackdrop, setDownOnBackdrop] = useState(false)
   const [cells, setCells] = useState({})
 
   useEffect(() => {
@@ -23,7 +24,12 @@ export default function SmallGroupModal({ open, title, initial, onSave, onClear,
   }
 
   return (
-    <div className="no-print" style={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="no-print"
+      style={styles.backdrop}
+      onMouseDown={(e) => setDownOnBackdrop(e.target === e.currentTarget)}
+      onClick={(e) => { if (downOnBackdrop && e.target === e.currentTarget) onClose() }}
+    >
       <div style={styles.modal}>
         <button style={styles.closeBtn} onClick={onClose}>✕</button>
         <h2 style={styles.title}>{title}</h2>

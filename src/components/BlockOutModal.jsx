@@ -11,6 +11,7 @@ export default function BlockOutModal({ open, data, activeWeekId, onSave, onClos
   const [scope, setScope] = useState('day') // 'day' | 'row'
   const [rowName, setRowName] = useState(rowNames[0] || '')
   const [eventName, setEventName] = useState('')
+  const [downOnBackdrop, setDownOnBackdrop] = useState(false)
 
   if (!open) return null
 
@@ -43,7 +44,12 @@ export default function BlockOutModal({ open, data, activeWeekId, onSave, onClos
   })
 
   return (
-    <div className="no-print" style={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="no-print"
+      style={styles.backdrop}
+      onMouseDown={(e) => setDownOnBackdrop(e.target === e.currentTarget)}
+      onClick={(e) => { if (downOnBackdrop && e.target === e.currentTarget) onClose() }}
+    >
       <div style={styles.modal}>
         <button style={styles.closeBtn} onClick={onClose}>✕</button>
         <h2 style={styles.title}>🚫 Block out</h2>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS } from '../lib/timetableDefaults'
+import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SUBJECT_DOT_COLOR, DEFAULT_SPECIALIST_BLOCKS } from '../lib/timetableDefaults'
 import { withNewWeek, getMonday } from '../lib/plannerHelpers'
 
 // Full custom timetable builder, ported from the HTML version's manual
@@ -8,14 +8,21 @@ import { withNewWeek, getMonday } from '../lib/plannerHelpers'
 // planner naturally stops being "blank" once weeks exist). An existing
 // planner can reopen this from Settings to edit its structure, in which
 // case onDone switches back to the Weekly Planner view.
+//
+// Specialist sessions (PE, Art, Music…) are configured here as a recurring,
+// per-day declaration — "on Tuesday, the whole Morning Block is PE / Art" —
+// rather than per-row toggles, since a specialist always takes over a whole
+// session block at once. See computeSpecialistSpans in plannerHelpers.js for
+// how this merges rows and computeMergedSpans's prior notesKey approach it replaced.
 
 export default function TimetableSetup({ data, onSave, onDone }) {
   const [draftRows, setDraftRows] = useState(null) // null = showing the initial choice screen
+  const [specialistDraft, setSpecialistDraft] = useState(null)
   const [busy, setBusy] = useState(false)
 
   async function useDefaultTimetable() {
     setBusy(true)
-    const withTimetable = { ...data, rows: null, planSubjects: null }
+    const withTimetable = { ...data, rows: null, planSubjects: null, specialistBlocks: null }
     const finalData = data.weeks.length === 0
       ? withNewWeek(withTimetable, DEFAULT_PLAN_SUBJECTS, getMonday(new Date()))
       : withTimetable
@@ -25,18 +32,20 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   }
 
   function startManualEdit() {
-    setDraftRows(rowsToDraft(data.rows || DEFAULT_ROWS))
+    setDraftRows(rowsToDraft(data.rows || DEFAULT_ROWS, data.planSubjects || DEFAULT_PLAN_SUBJECTS))
+    setSpecialistDraft({ ...(data.specialistBlocks || DEFAULT_SPECIALIST_BLOCKS) })
   }
 
   function cancelEdit() {
     if (data.weeks.length > 0 && !window.confirm('Discard this draft and return?')) return
     setDraftRows(null)
+    setSpecialistDraft(null)
     onDone?.()
   }
 
   function addDraftRow(type) {
     if (type === 'slot') {
-      setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', plannable: true, activeDays: [...DAYS] }])
+      setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', plannable: true, activeDays: [...DAYS], accColor: '#3A86D4' }])
     } else if (type === 'break') {
       setDraftRows([...draftRows, { type: 'break', label: 'EATING TIME' }])
     } else {
@@ -63,25 +72,6 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     setDraftRows(next)
   }
 
-  function setSpecialistDay(idx, day) {
-    const current = draftRows[idx].specialistOverrides?.[day]
-    const label = window.prompt('Specialist name for ' + day + ' (leave blank to clear):', current || '')
-    if (label === null) return // cancelled
-    const next = [...draftRows]
-    const overrides = { ...(next[idx].specialistOverrides || {}) }
-    if (label.trim()) {
-      overrides[day] = label.trim()
-      // Make sure this day is also active so it actually renders
-      const activeDays = next[idx].activeDays ? [...next[idx].activeDays] : [...DAYS]
-      if (!activeDays.includes(day)) activeDays.push(day)
-      next[idx] = { ...next[idx], specialistOverrides: overrides, activeDays }
-    } else {
-      delete overrides[day]
-      next[idx] = { ...next[idx], specialistOverrides: overrides }
-    }
-    setDraftRows(next)
-  }
-
   function moveDraftRow(idx, dir) {
     const newIdx = idx + dir
     if (newIdx < 0 || newIdx >= draftRows.length) return
@@ -93,6 +83,21 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   function deleteDraftRow(idx) {
     if (!window.confirm('Remove this row from the draft?')) return
     setDraftRows(draftRows.filter((_, i) => i !== idx))
+  }
+
+  function setSpecialistBlockForDay(day, blockCls) {
+    const next = { ...specialistDraft }
+    if (!blockCls) {
+      delete next[day]
+    } else {
+      next[day] = { blockCls, name: next[day]?.name || '' }
+    }
+    setSpecialistDraft(next)
+  }
+
+  function setSpecialistNameForDay(day, name) {
+    if (!specialistDraft[day]) return
+    setSpecialistDraft({ ...specialistDraft, [day]: { ...specialistDraft[day], name } })
   }
 
   async function saveDraftTimetable() {
@@ -111,33 +116,20 @@ export default function TimetableSetup({ data, onSave, onDone }) {
         return
       }
 
+      const activeDays = row.activeDays && row.activeDays.length ? row.activeDays : [...DAYS]
+      const days = {}
+
       if (row.sgKey) {
-        const activeDays = row.activeDays && row.activeDays.length ? row.activeDays : [...DAYS]
-        const overrides = row.specialistOverrides || {}
-        const days = {}
         DAYS.forEach(d => {
-          if (overrides[d]) {
-            const notesKey = overrides[d].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
-            days[d] = { fixed: overrides[d], cls: 's-specialist', notesKey }
-            return
-          }
           days[d] = activeDays.includes(d) ? { sg: true, sgKey: row.sgKey } : null
         })
         newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, sgKey: row.sgKey, days })
         return
       }
 
-      const activeDays = row.activeDays && row.activeDays.length ? row.activeDays : [...DAYS]
-      const days = {}
-      const overrides = row.specialistOverrides || {}
       const subjKey = (row.name || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('session_' + newRows.length)
 
       DAYS.forEach(d => {
-        if (overrides[d]) {
-          const notesKey = overrides[d].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
-          days[d] = { fixed: overrides[d], cls: 's-specialist', notesKey }
-          return
-        }
         if (!activeDays.includes(d)) { days[d] = null; return }
         if (row.plannable) {
           days[d] = { plannable: true, subject: subjKey }
@@ -149,7 +141,15 @@ export default function TimetableSetup({ data, onSave, onDone }) {
       newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, days })
 
       if (row.plannable) {
-        newPlanSubjects[subjKey] = { label: row.name, days: activeDays.filter(d => !overrides[d]) }
+        newPlanSubjects[subjKey] = { label: row.name, days: activeDays, color: row.accColor || '#3A86D4' }
+      }
+    })
+
+    // Only keep specialist declarations that have a name set
+    const newSpecialistBlocks = {}
+    Object.entries(specialistDraft).forEach(([day, spec]) => {
+      if (spec?.blockCls && spec.name?.trim()) {
+        newSpecialistBlocks[day] = { blockCls: spec.blockCls, name: spec.name.trim() }
       }
     })
 
@@ -166,13 +166,14 @@ export default function TimetableSetup({ data, onSave, onDone }) {
       return { ...week, sessions }
     })
 
-    let finalData = { ...data, rows: newRows, planSubjects: newPlanSubjects, weeks }
+    let finalData = { ...data, rows: newRows, planSubjects: newPlanSubjects, specialistBlocks: newSpecialistBlocks, weeks }
     if (finalData.weeks.length === 0) {
       finalData = withNewWeek(finalData, newPlanSubjects, getMonday(new Date()))
     }
 
     await onSave(finalData)
     setDraftRows(null)
+    setSpecialistDraft(null)
     onDone?.()
   }
 
@@ -202,7 +203,8 @@ export default function TimetableSetup({ data, onSave, onDone }) {
           <div style={styles.cardTitle}>Edit manually</div>
           <div style={styles.cardDesc}>
             Build or adjust the timetable row by row — add sessions, breaks, and block headers,
-            set which days each applies to, and mark sessions as plannable or fixed.
+            set which days each applies to, mark sessions as plannable or fixed, and declare
+            any specialist sessions (PE, Art, Music…).
           </div>
           <button style={styles.buttonOutline} onClick={startManualEdit}>✏️ Edit current timetable manually</button>
         </div>
@@ -214,6 +216,14 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     )
   }
 
+  // Block options for the specialist picker, sourced from the draft's own
+  // block-header rows (de-duplicated by cls).
+  const blockOptions = []
+  const seen = new Set()
+  draftRows.filter(r => r.type === 'block-header').forEach(r => {
+    if (!seen.has(r.cls)) { blockOptions.push({ cls: r.cls, label: r.label }); seen.add(r.cls) }
+  })
+
   // ── Draft row editor screen ──
   return (
     <div style={styles.wrap}>
@@ -221,8 +231,37 @@ export default function TimetableSetup({ data, onSave, onDone }) {
         ⚠️ Review each row below before saving. Fix any times, labels, or day toggles. Nothing changes in your planner until you click <strong>Save Timetable</strong>.
       </div>
 
+      <div style={styles.sectionTitle}>Specialist sessions</div>
+      <p style={styles.starHint}>A specialist always takes over a whole session block for the day (e.g. the entire Morning Block becomes PE / Art on Tuesday). Pick "None" for a normal day.</p>
+      <div style={styles.specialistGrid}>
+        {DAYS.map(day => {
+          const spec = specialistDraft?.[day]
+          return (
+            <div key={day} style={styles.specialistCard}>
+              <div style={styles.specialistDay}>{day}</div>
+              <select
+                value={spec?.blockCls || ''}
+                onChange={(e) => setSpecialistBlockForDay(day, e.target.value || null)}
+                style={styles.rowSelect}
+              >
+                <option value="">None</option>
+                {blockOptions.map(b => <option key={b.cls} value={b.cls}>{b.label}</option>)}
+              </select>
+              {spec?.blockCls && (
+                <input
+                  type="text"
+                  value={spec.name || ''}
+                  placeholder="e.g. PE / Art"
+                  onChange={(e) => setSpecialistNameForDay(day, e.target.value)}
+                  style={styles.rowInputWide}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+
       <div style={styles.sectionTitle}>Timetable rows (in order)</div>
-      <p style={styles.starHint}>Tap the ☆ next to a day to turn just that day into a specialist block (PE, Art, Music…) without affecting the row's other days.</p>
       <div style={styles.rowList}>
         {draftRows.map((row, idx) => (
           <DraftRowCard
@@ -231,7 +270,6 @@ export default function TimetableSetup({ data, onSave, onDone }) {
             idx={idx}
             onUpdate={updateDraftRow}
             onToggleDay={toggleDraftRowDay}
-            onSetSpecialistDay={setSpecialistDay}
             onMove={moveDraftRow}
             onDelete={deleteDraftRow}
           />
@@ -252,7 +290,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   )
 }
 
-function DraftRowCard({ row, idx, onUpdate, onToggleDay, onSetSpecialistDay, onMove, onDelete }) {
+function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
   if (row.type === 'block-header') {
     return (
       <div style={{ ...styles.rowCard, background: '#EAF1FB' }}>
@@ -285,7 +323,6 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onSetSpecialistDay, onM
     )
   }
 
-  const overrides = row.specialistOverrides || {}
   const rowType = row.sgKey ? 'sg' : row.plannable ? 'plannable' : 'fixed'
 
   return (
@@ -298,27 +335,15 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onSetSpecialistDay, onM
       />
       <div style={styles.dayToggles}>
         {DAYS.map(d => {
-          const isOverride = !!overrides[d]
           const on = row.activeDays ? row.activeDays.includes(d) : true
           return (
-            <div key={d} style={styles.dayToggleStack}>
-              <button
-                type="button"
-                onClick={() => onToggleDay(idx, d)}
-                title={isOverride ? `${d} — specialist: ${overrides[d]}` : d}
-                style={{
-                  ...styles.dayToggle,
-                  ...(on ? styles.dayToggleActive : {}),
-                  ...(isOverride ? styles.dayToggleSpecialist : {}),
-                }}
-              >{d[0]}</button>
-              <button
-                type="button"
-                onClick={() => onSetSpecialistDay(idx, d)}
-                title={isOverride ? `Edit specialist name for ${d}` : `Mark ${d} as a specialist block (PE, Art, Music…)`}
-                style={styles.starBtn}
-              >{isOverride ? '⭐' : '☆'}</button>
-            </div>
+            <button
+              key={d}
+              type="button"
+              onClick={() => onToggleDay(idx, d)}
+              title={d}
+              style={{ ...styles.dayToggle, ...(on ? styles.dayToggleActive : {}) }}
+            >{d[0]}</button>
           )
         })}
       </div>
@@ -339,6 +364,15 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onSetSpecialistDay, onM
           <option value="mts">Maths to Self</option>
           <option value="rts">Read to Self</option>
         </select>
+      )}
+      {rowType === 'plannable' && (
+        <input
+          type="color"
+          value={row.accColor || '#3A86D4'}
+          onChange={(e) => onUpdate(idx, 'accColor', e.target.value)}
+          title="Colour for this subject's session cards"
+          style={styles.colorSwatch}
+        />
       )}
       <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
     </div>
@@ -375,7 +409,10 @@ function convertTimeLabelTo24(label) {
   return `${String(h).padStart(2, '0')}:${min}`
 }
 
-function rowsToDraft(liveRows) {
+// Converts the live rows structure into a simplified draft shape for
+// editing. Specialist sessions are no longer part of any row's cells at
+// all — they're handled separately via the specialistDraft state above.
+function rowsToDraft(liveRows, planSubjectsData) {
   return liveRows.map(row => {
     if (row.type === 'block-header') {
       return { type: row.type, label: row.label, cls: row.cls || 'block-morning' }
@@ -388,21 +425,20 @@ function rowsToDraft(liveRows) {
     let plannable = false
     let cls = null
     let sgKey = null
-    const specialistOverrides = {}
+    let subjKey = null
     DAYS.forEach(d => {
       const cell = row.days[d]
       if (cell) {
         activeDays.push(d)
-        if (cell.notesKey) {
-          specialistOverrides[d] = cell.fixed
-        } else if (cell.sg) {
+        if (cell.sg) {
           sgKey = cell.sgKey
         } else {
-          if (cell.plannable) plannable = true
+          if (cell.plannable) { plannable = true; subjKey = cell.subject }
           if (cell.cls) cls = cell.cls
         }
       }
     })
+    const accColor = subjKey ? (planSubjectsData?.[subjKey]?.color || SUBJECT_DOT_COLOR[subjKey] || '#3A86D4') : null
     return {
       type: 'slot',
       time24: convertTimeLabelTo24(row.time),
@@ -411,7 +447,7 @@ function rowsToDraft(liveRows) {
       sgKey,
       activeDays,
       cls, // preserved so a Fixed row keeps its original color
-      specialistOverrides, // per-day overrides, e.g. { Friday: 'Science / Drama' }
+      accColor, // preserved so a Plannable subject keeps its chosen color
     }
   })
 }
@@ -426,20 +462,21 @@ const styles = {
   button: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   buttonOutline: { padding: '9px 16px', background: '#fff', color: '#1C2333', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 4 },
   banner: { background: '#FFF6E0', border: '1px solid #F0D89A', borderRadius: 8, padding: '10px 14px', fontSize: 12, marginBottom: 16, lineHeight: 1.5 },
-  sectionTitle: { fontSize: 11, fontWeight: 800, color: '#7A849E', textTransform: 'uppercase', marginBottom: 8 },
+  sectionTitle: { fontSize: 11, fontWeight: 800, color: '#7A849E', textTransform: 'uppercase', marginBottom: 8, marginTop: 4 },
+  starHint: { fontSize: 11, color: '#7A849E', marginTop: -4, marginBottom: 10 },
+  specialistGrid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 20 },
+  specialistCard: { background: '#F0F8F5', border: '1px solid #D4D9E5', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 },
+  specialistDay: { fontSize: 11, fontWeight: 800 },
   rowList: { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 },
   rowCard: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #D4D9E5', borderRadius: 8, padding: '8px 10px', flexWrap: 'wrap' },
   rowInputTime: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 6px', fontSize: 12, width: 90 },
   rowInputName: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, flex: 1, minWidth: 140 },
   rowInputWide: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 8px', fontSize: 12, flex: 1 },
   dayToggles: { display: 'flex', gap: 3 },
-  dayToggleStack: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 },
   dayToggle: { width: 22, height: 22, borderRadius: 4, border: '1px solid #D4D9E5', background: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', color: '#B0B6C4' },
   dayToggleActive: { background: '#3A86D4', color: '#fff', borderColor: '#3A86D4' },
-  dayToggleSpecialist: { background: '#4AA88A', borderColor: '#4AA88A' },
-  starBtn: { width: 22, height: 16, border: 'none', background: 'none', fontSize: 10, cursor: 'pointer', padding: 0, lineHeight: 1 },
-  starHint: { fontSize: 11, color: '#7A849E', marginTop: -4, marginBottom: 10 },
   rowSelect: { border: '1px solid #D4D9E5', borderRadius: 5, padding: '5px 6px', fontSize: 11, fontFamily: 'inherit' },
+  colorSwatch: { width: 30, height: 28, border: '1px solid #D4D9E5', borderRadius: 5, padding: 0, cursor: 'pointer' },
   rowActions: { display: 'flex', gap: 3, marginLeft: 'auto' },
   iconBtn: { width: 24, height: 24, border: '1px solid #D4D9E5', background: '#fff', borderRadius: 5, fontSize: 11, cursor: 'pointer' },
   addRowBar: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' },

@@ -4,16 +4,18 @@ import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import { useState } from 'react'
 import SessionModal from './SessionModal'
+import PasteImportModal from './PasteImportModal'
 
 export default function TermView({ data, onSave, subj, snapshotForUndo }) {
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const subjMeta = planSubjects[subj]
   const days = subjMeta?.days || []
-  const acc = SUBJECT_DOT_COLOR[subj] || '#888'
+  const acc = subjMeta?.color || SUBJECT_DOT_COLOR[subj] || '#888'
 
   const [myGroupPrefs, setMyGroupPrefs] = useState(loadMyGroupPrefs)
   const [viewMode, setViewMode] = useState('single') // 'single' | 'all' — session-only, not persisted
   const [modalCtx, setModalCtx] = useState(null) // { weekId, day, groupId, existing } | null
+  const [pasteImportOpen, setPasteImportOpen] = useState(false)
 
   if (!subjMeta) return <div style={{ padding: 30 }}>Unknown subject.</div>
 
@@ -32,6 +34,24 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
   }
   function openEdit(weekId, day, groupId, existing) {
     setModalCtx({ weekId, day, groupId, existing })
+  }
+
+  function handleApplyPasteImport({ weekId, dayMap, contentCells }) {
+    snapshotForUndo?.('paste import')
+    const week = data.weeks.find(w => w.id === weekId)
+    let newWeek = week
+    contentCells.forEach((cellText, ci) => {
+      const day = dayMap[ci]
+      if (!day || !cellText.trim()) return
+      const groupId = hasGroups ? getEffectiveGroupId(data, subj, myGroupPrefs) : null
+      const lines = cellText.trim().split('\n')
+      const title = lines[0].slice(0, 60)
+      newWeek = withSessionSet(newWeek, subj, day, groupId, {
+        title, detail: cellText.trim(), li: '', resources: '', bumped: false,
+      })
+    })
+    onSave(withWeekUpdated(data, weekId, newWeek))
+    setPasteImportOpen(false)
   }
   function closeModal() {
     setModalCtx(null)
@@ -121,6 +141,7 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
               </div>
             </>
           )}
+          <button style={styles.pasteBtn} onClick={() => setPasteImportOpen(true)}>📋 Paste from Word</button>
           <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
         </div>
       </div>
@@ -181,8 +202,9 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
                             <div>{blockLabel}</div>
                           </div>
                         ) : session ? (
-                          <div style={styles.sessionCard} onClick={() => openEdit(week.id, day, activeGroupId, session)}>
+                          <div style={{ ...styles.sessionCard, borderLeftColor: acc }} onClick={() => openEdit(week.id, day, activeGroupId, session)}>
                             <div style={{ ...styles.cardTitle, color: acc }}>{session.title}</div>
+                            {session.li && <div style={styles.cardLi}>🎯 {session.li}</div>}
                             <div style={styles.cardPreview}>{linkify(session.detail)}</div>
                             {session.resources && <div style={styles.cardResource}>🔗 {linkify(session.resources)}</div>}
                           </div>
@@ -206,6 +228,15 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
         onSave={handleSaveSession}
         onDelete={modalCtx?.existing ? handleDeleteSession : null}
         onClose={closeModal}
+      />
+
+      <PasteImportModal
+        open={pasteImportOpen}
+        subjLabel={subjMeta.label}
+        weeks={data.weeks}
+        activeWeekId={data.activeWeekId || data.weeks[0]?.id}
+        onApply={handleApplyPasteImport}
+        onClose={() => setPasteImportOpen(false)}
       />
     </div>
   )
@@ -269,6 +300,7 @@ const styles = {
   modeBtn: { padding: '6px 10px', fontSize: 11, border: 'none', cursor: 'pointer', background: '#fff', color: '#1C2333' },
   modeBtnActive: { background: '#3A86D4', color: '#fff' },
   printBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  pasteBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   summaryBox: { width: '100%', minHeight: 64, padding: '10px 12px', border: '1.5px solid #D4D9E5', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', marginBottom: 14, boxSizing: 'border-box' },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.07)', border: '1.5px solid #D4D9E5' },
@@ -279,9 +311,10 @@ const styles = {
   deleteWeekBtn: { position: 'absolute', top: 6, right: 6, width: 20, height: 20, border: 'none', borderRadius: 4, background: '#FFE8E8', color: '#C0392B', fontSize: 10, cursor: 'pointer' },
   topicInput: { marginTop: 4, display: 'block', width: '100%', border: '1px solid #D4D9E5', borderRadius: 4, fontSize: 11, fontStyle: 'italic', color: '#3A86D4', padding: '2px 4px', fontFamily: 'inherit', boxSizing: 'border-box' },
   cell: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 150 },
-  sessionCard: { padding: '8px 10px', minHeight: 64, cursor: 'pointer', borderLeft: '3px solid #3A86D4' },
+  sessionCard: { padding: '8px 10px', minHeight: 64, cursor: 'pointer', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4' },
   cardTitle: { fontSize: 11.5, fontWeight: 700, marginBottom: 3 },
   cardPreview: { fontSize: 10, color: '#7A849E', whiteSpace: 'pre-line' },
+  cardLi: { fontSize: 9.5, color: '#3A6EA5', fontStyle: 'italic', marginBottom: 3 },
   cardResource: { fontSize: 9, marginTop: 3 },
   emptyCell: { minHeight: 64, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4D9E5', fontSize: 16, cursor: 'pointer' },
   allGroupsStack: { display: 'flex', flexDirection: 'column', gap: 3 },

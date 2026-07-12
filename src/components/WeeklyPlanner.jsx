@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS, SUBJECT_DOT_COLOR } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeMergedSpans } from '../lib/plannerHelpers'
+import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS, SUBJECT_DOT_COLOR, DEFAULT_SPECIALIST_BLOCKS } from '../lib/timetableDefaults'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
@@ -9,7 +9,8 @@ import BlockOutModal from './BlockOutModal'
 
 export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
   const rows = data.rows || DEFAULT_ROWS
-  const mergedSpans = useMemo(() => computeMergedSpans(rows, DAYS), [rows])
+  const specialistBlocks = data.specialistBlocks || DEFAULT_SPECIALIST_BLOCKS
+  const mergedSpans = useMemo(() => computeSpecialistSpans(rows, DAYS, specialistBlocks), [rows, specialistBlocks])
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const weeks = data.weeks
   const activeWeekId = data.activeWeekId || (weeks[0] && weeks[0].id)
@@ -298,10 +299,22 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
     const merge = rowSpans?.[day]
     if (merge?.skip) continue // merged into a specialist block's cell above
 
+    // Specialist session anchor — driven by the recurring timetable-level
+    // declaration (data.specialistBlocks), not by any cell content, since
+    // the affected rows' actual cells are just null underneath this.
+    if (merge?.label) {
+      cells.push(
+        <td key={day} rowSpan={merge.span || 1} style={{ ...styles.td, background: fixedColor('s-specialist') }}>
+          <NotesCard cls="s-specialist" label={merge.label} notesKey={merge.notesKey} week={week} onSaveNotes={onSaveNotes} />
+        </td>
+      )
+      continue
+    }
+
     const cell = row.days[day]
     if (!cell) { cells.push(<td key={day} style={styles.td}></td>); continue }
 
-    const rowSpan = merge?.span || 1
+    const rowSpan = 1
 
     // Universal block check — whole day OR this specific row blocked.
     // Overrides everything else in the cell if present.
@@ -319,20 +332,6 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
     }
 
     if (cell.fixed) {
-      if (cell.notesKey) {
-        cells.push(
-          <td key={day} rowSpan={rowSpan} style={{ ...styles.td, background: fixedColor(cell.cls) }}>
-            <NotesCard
-              cls={cell.cls}
-              label={cell.fixed}
-              notesKey={cell.notesKey}
-              week={week}
-              onSaveNotes={onSaveNotes}
-            />
-          </td>
-        )
-        continue
-      }
       cells.push(
         <td key={day} rowSpan={rowSpan} style={styles.td}>
           <div style={{ ...styles.fixedCard, background: fixedColor(cell.cls) }}>
@@ -402,12 +401,13 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
       const subj = cell.subject
       const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
       const session = getSessionFor(week, subj, day, groupId)
-      const accent = SUBJECT_DOT_COLOR[subj] || '#3A86D4'
+      const accent = (data.planSubjects || DEFAULT_PLAN_SUBJECTS)[subj]?.color || SUBJECT_DOT_COLOR[subj] || '#3A86D4'
       cells.push(
         <td key={day} style={styles.td}>
           {session ? (
             <div style={{ ...styles.planCard, borderLeftColor: accent }} onClick={() => onEdit(subj, day, session)}>
               <div style={{ ...styles.cardTitle, color: accent }}>{session.title}</div>
+              {session.li && <div style={styles.cardLi}>🎯 {session.li}</div>}
               <div style={styles.cardPreview}>{linkify(session.detail)}</div>
               {session.resources && (
                 <div style={styles.cardResource}>🔗 {linkify(session.resources)}</div>
@@ -462,6 +462,7 @@ const styles = {
   planCard: { borderRadius: 6, padding: '7px 9px', minHeight: 56, cursor: 'pointer', position: 'relative', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4', background: '#FAFBFD' },
   cardTitle: { fontSize: 12, fontWeight: 700, marginBottom: 3, color: '#2870D4' },
   cardPreview: { fontSize: 10, color: '#7A849E', whiteSpace: 'pre-line' },
+  cardLi: { fontSize: 9.5, color: '#3A6EA5', fontStyle: 'italic', marginBottom: 3 },
   cardResource: { fontSize: 9, marginTop: 3 },
   emptyCell: { borderRadius: 6, minHeight: 56, border: '1.5px dashed #D4D9E5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7A849E', fontSize: 18, cursor: 'pointer' },
   deleteBtn: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer', display: 'none' },
