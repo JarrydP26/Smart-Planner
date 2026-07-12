@@ -141,4 +141,17 @@ export function withRelabeledTerm(data, newTerm) {
   return { ...data, weeks }
 }
 
+// Small group grid data (Maths to Self / Read to Self) — a separate map on
+// the week, keyed by "{sgKey}_{day}" (e.g. "mts_Monday"), each holding an
+// optional description plus one name-list per small-group cell.
+export function getSgData(week, sgKey, day) {
+  const key = `${sgKey}_${day}`
+  return week.smallGroups?.[key] || {}
+}
+
+export function withSgDataSet(week, sgKey, day, obj) {
+  const key = `${sgKey}_${day}`
+  return { ...week, smallGroups: { ...week.smallGroups, [key]: obj } }
+}
+
 export { getMonday }
