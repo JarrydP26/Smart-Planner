@@ -7,6 +7,7 @@ import TimetableSetup from '../components/TimetableSetup'
 import WeeklyPlanner from '../components/WeeklyPlanner'
 import TermView from '../components/TermView'
 import Settings from '../components/Settings'
+import SearchPanel from '../components/SearchPanel'
 
 export default function PlannerPage() {
   const { plannerId } = useParams()
@@ -15,24 +16,22 @@ export default function PlannerPage() {
   const [plannerLoading, setPlannerLoading] = useState(true)
   const [plannerError, setPlannerError] = useState('')
   const [view, setView] = useState('weekly') // 'weekly' | 'settings' | a subject key
-  const [undoSnapshot, setUndoSnapshot] = useState(null)
-  const [undoLabel, setUndoLabel] = useState('')
+  const [undoStack, setUndoStack] = useState([]) // [{ data, label }, ...] — last entry is the most recent
 
   const { data, loading: dataLoading, error: dataError, saving, save, saveNow } = usePlannerData(plannerId)
 
-  // Call this right before a destructive action so it can be undone.
-  // Takes the CURRENT data explicitly (pass the same `data` in scope) since
-  // this needs to snapshot the state as it is right before the change.
+  // Call this right before a destructive action so it can be undone. Takes
+  // a snapshot of the CURRENT data before the change is made. Keeps the
+  // last 10 steps — older ones just drop off, same as most undo stacks.
   function snapshotForUndo(label) {
-    setUndoSnapshot(data)
-    setUndoLabel(label)
+    setUndoStack(stack => [...stack, { data, label }].slice(-10))
   }
 
   function performUndo() {
-    if (!undoSnapshot) return
-    save(undoSnapshot)
-    setUndoSnapshot(null)
-    setUndoLabel('')
+    if (undoStack.length === 0) return
+    const last = undoStack[undoStack.length - 1]
+    save(last.data)
+    setUndoStack(stack => stack.slice(0, -1))
   }
 
   useEffect(() => {
@@ -72,6 +71,12 @@ export default function PlannerPage() {
         </button>
 
         {!isBlank && (
+          <button style={view === 'search' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('search')}>
+            🔍 Search
+          </button>
+        )}
+
+        {!isBlank && (
           <>
             <div style={styles.sectionLabel}>Term View</div>
             {Object.entries(planSubjects).map(([key, meta]) => (
@@ -101,9 +106,9 @@ export default function PlannerPage() {
         <div className="no-print" style={styles.topBar}>
           <button style={styles.backBtn} onClick={() => navigate('/')}>← All planners</button>
           <span style={styles.plannerName}>{planner.name}</span>
-          {undoSnapshot && (
-            <button style={styles.undoBtn} title={`Undo: ${undoLabel}`} onClick={performUndo}>
-              ↩️ Undo: {undoLabel}
+          {undoStack.length > 0 && (
+            <button style={styles.undoBtn} title={`Undo: ${undoStack[undoStack.length - 1].label}`} onClick={performUndo}>
+              ↩️ Undo: {undoStack[undoStack.length - 1].label}{undoStack.length > 1 ? ` (${undoStack.length} steps)` : ''}
             </button>
           )}
           <span style={styles.saveStatus}>{saving ? 'Saving…' : ''}</span>
@@ -114,6 +119,8 @@ export default function PlannerPage() {
             <TimetableSetup data={data} onSave={saveNow} />
           ) : view === 'weekly' ? (
             <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'search' ? (
+            <SearchPanel data={data} onNavigate={(subj) => setView(subj)} />
           ) : view === 'settings' ? (
             <Settings data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
           ) : view === 'timetable-setup' ? (
