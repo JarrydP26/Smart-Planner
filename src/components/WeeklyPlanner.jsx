@@ -258,6 +258,7 @@ const FIXED_COLORS = {
   's-mts': '#FBE0C0',
   's-rts': '#D0F0DC',
   's-science': '#F5F0C8',
+  's-specialist': '#D6ECE6',
 }
 
 function fixedColor(cls) {

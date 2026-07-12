@@ -37,6 +37,8 @@ export default function TimetableSetup({ data, onSave, onDone }) {
   function addDraftRow(type) {
     if (type === 'slot') {
       setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', plannable: true, activeDays: [...DAYS] }])
+    } else if (type === 'specialist') {
+      setDraftRows([...draftRows, { type: 'slot', time24: '', name: '', specialist: true, activeDays: [] }])
     } else if (type === 'break') {
       setDraftRows([...draftRows, { type: 'break', label: 'EATING TIME' }])
     } else {
@@ -46,7 +48,11 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
   function updateDraftRow(idx, field, value) {
     const next = [...draftRows]
-    next[idx] = { ...next[idx], [field]: value }
+    if (typeof field === 'object') {
+      next[idx] = { ...next[idx], ...field }
+    } else {
+      next[idx] = { ...next[idx], [field]: value }
+    }
     setDraftRows(next)
   }
 
@@ -89,15 +95,25 @@ export default function TimetableSetup({ data, onSave, onDone }) {
       }
 
       if (row.special) {
-        // Small-group / notes rows keep their exact original cell structure
-        // (including rowspan and color class) — only time/name are editable.
+        // Small-group rows keep their exact original per-day structure —
+        // only time/name are editable.
         newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, days: row._originalDays })
         return
       }
 
-      const subjKey = (row.name || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('session_' + newRows.length)
       const activeDays = row.activeDays && row.activeDays.length ? row.activeDays : [...DAYS]
       const days = {}
+
+      if (row.specialist) {
+        const notesKey = (row.name || 'specialist').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+        DAYS.forEach(d => {
+          days[d] = activeDays.includes(d) ? { fixed: row.name, cls: 's-specialist', notesKey } : null
+        })
+        newRows.push({ type: 'slot', time: convert24ToLabel(row.time24), name: row.name, notesKey, days })
+        return
+      }
+
+      const subjKey = (row.name || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('session_' + newRows.length)
 
       DAYS.forEach(d => {
         if (!activeDays.includes(d)) { days[d] = null; return }
@@ -200,6 +216,7 @@ export default function TimetableSetup({ data, onSave, onDone }) {
 
       <div style={styles.addRowBar}>
         <button style={styles.buttonOutline} onClick={() => addDraftRow('slot')}>+ Add session row</button>
+        <button style={styles.buttonOutline} onClick={() => addDraftRow('specialist')}>+ Add specialist block</button>
         <button style={styles.buttonOutline} onClick={() => addDraftRow('break')}>+ Add break</button>
         <button style={styles.buttonOutline} onClick={() => addDraftRow('block-header')}>+ Add block header</button>
       </div>
@@ -254,21 +271,19 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
           onChange={(e) => onUpdate(idx, 'name', e.target.value)}
           style={styles.rowInputName}
         />
-        <span style={styles.protectedHint}>
-          {row.special === 'sg' ? '🔒 Small group grid — structure protected' : '🔒 Notes block — structure protected'}
-        </span>
+        <span style={styles.protectedHint}>🔒 Small group grid — structure protected</span>
         <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
       </div>
     )
   }
 
-  const isPlannable = !!row.plannable
+  const rowType = row.specialist ? 'specialist' : row.plannable ? 'plannable' : 'fixed'
 
   return (
-    <div style={styles.rowCard}>
+    <div style={{ ...styles.rowCard, ...(rowType === 'specialist' ? { background: '#F0F8F5' } : {}) }}>
       <input type="time" value={row.time24 || ''} onChange={(e) => onUpdate(idx, 'time24', e.target.value)} style={styles.rowInputTime} />
       <input
-        type="text" value={row.name || ''} placeholder="Session name (e.g. Maths)"
+        type="text" value={row.name || ''} placeholder="Session name (e.g. Maths, PE / Art)"
         onChange={(e) => onUpdate(idx, 'name', e.target.value)}
         style={styles.rowInputName}
       />
@@ -287,12 +302,16 @@ function DraftRowCard({ row, idx, onUpdate, onToggleDay, onMove, onDelete }) {
         })}
       </div>
       <select
-        value={isPlannable ? 'plannable' : 'fixed'}
-        onChange={(e) => onUpdate(idx, 'plannable', e.target.value === 'plannable')}
+        value={rowType}
+        onChange={(e) => {
+          const v = e.target.value
+          onUpdate(idx, { plannable: v === 'plannable', specialist: v === 'specialist' })
+        }}
         style={styles.rowSelect}
       >
         <option value="fixed">Fixed</option>
         <option value="plannable">Plannable</option>
+        <option value="specialist">Specialist (e.g. PE, Art, Music)</option>
       </select>
       <RowActions idx={idx} onMove={onMove} onDelete={onDelete} />
     </div>
@@ -344,26 +363,30 @@ function rowsToDraft(liveRows) {
       return { type: row.type, label: row.label }
     }
 
-    // Check for a special cell (small group / notes) anywhere in this row
-    const specialCell = DAYS.map(d => row.days[d]).find(c => c && (c.sg || c.notesKey))
-    if (specialCell) {
+    // Small-group grids (Maths to Self / Read to Self) keep their exact
+    // original per-day structure — the simple editor can't safely rebuild
+    // group data, so these stay locked (time/name only).
+    const sgCell = DAYS.map(d => row.days[d]).find(c => c && c.sg)
+    if (sgCell) {
       return {
         type: 'slot',
-        special: specialCell.sg ? 'sg' : 'notes',
+        special: 'sg',
         name: row.name,
         time24: convertTimeLabelTo24(row.time),
-        _originalDays: row.days, // reused verbatim on save — not rebuilt
+        _originalDays: row.days,
       }
     }
 
     const activeDays = []
     let plannable = false
+    let specialist = false
     let cls = null
     DAYS.forEach(d => {
       const cell = row.days[d]
-      if (cell && !cell.rowspanned && !cell.span) {
+      if (cell) {
         activeDays.push(d)
         if (cell.plannable) plannable = true
+        if (cell.notesKey) specialist = true
         if (cell.cls) cls = cell.cls
       }
     })
@@ -372,8 +395,9 @@ function rowsToDraft(liveRows) {
       time24: convertTimeLabelTo24(row.time),
       name: row.name,
       plannable,
+      specialist,
       activeDays,
-      cls, // preserved so a Fixed row (e.g. Circle, Brain Break) keeps its color
+      cls, // preserved so a Fixed/Specialist row keeps its original color
     }
   })
 }
