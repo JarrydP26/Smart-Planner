@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName } from '../lib/plannerHelpers'
+import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS } from '../lib/timetableDefaults'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
+import SmallGroupModal from './SmallGroupModal'
 
 export default function WeeklyPlanner({ data, onSave }) {
   const rows = data.rows || DEFAULT_ROWS
@@ -14,6 +15,29 @@ export default function WeeklyPlanner({ data, onSave }) {
 
   const [myGroupPrefs, setMyGroupPrefs] = useState(loadMyGroupPrefs)
   const [modalCtx, setModalCtx] = useState(null) // { subj, day, groupId, existing } | null
+  const [sgModalCtx, setSgModalCtx] = useState(null) // { sgKey, day } | null
+
+  function openSgModal(sgKey, day) {
+    setSgModalCtx({ sgKey, day })
+  }
+
+  function closeSgModal() {
+    setSgModalCtx(null)
+  }
+
+  function handleSaveSgData(obj) {
+    const { sgKey, day } = sgModalCtx
+    const newWeek = withSgDataSet(activeWeek, sgKey, day, obj)
+    onSave(withWeekUpdated(data, activeWeek.id, newWeek))
+    closeSgModal()
+  }
+
+  function handleClearSgData() {
+    const { sgKey, day } = sgModalCtx
+    const newWeek = withSgDataSet(activeWeek, sgKey, day, {})
+    onSave(withWeekUpdated(data, activeWeek.id, newWeek))
+    closeSgModal()
+  }
 
   function setActiveGroupId(subj, groupId) {
     const next = { ...myGroupPrefs, [subj]: groupId }
@@ -140,6 +164,7 @@ export default function WeeklyPlanner({ data, onSave }) {
                   onEdit={openEdit}
                   onDelete={quickDelete}
                   onSaveNotes={handleSaveNotes}
+                  onOpenSgModal={openSgModal}
                 />
               )
             })}
@@ -154,6 +179,15 @@ export default function WeeklyPlanner({ data, onSave }) {
         onSave={handleSaveSession}
         onDelete={modalCtx?.existing ? handleDeleteSession : null}
         onClose={closeModal}
+      />
+
+      <SmallGroupModal
+        open={!!sgModalCtx}
+        title={sgModalCtx ? `${SG_SLOTS[sgModalCtx.sgKey]?.label} — ${sgModalCtx.day} groups` : ''}
+        initial={sgModalCtx ? getSgData(activeWeek, sgModalCtx.sgKey, sgModalCtx.day) : null}
+        onSave={handleSaveSgData}
+        onClear={handleClearSgData}
+        onClose={closeSgModal}
       />
     </div>
   )
@@ -238,7 +272,7 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
   )
 }
 
-function RowRenderer({ row, week, data, myGroupPrefs, onAdd, onEdit, onDelete, onSaveNotes }) {
+function RowRenderer({ row, week, data, myGroupPrefs, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
   const cells = []
   let skip = 0
 
@@ -291,10 +325,41 @@ function RowRenderer({ row, week, data, myGroupPrefs, onAdd, onEdit, onDelete, o
 
     if (cell.sg) {
       const sgSlot = SG_SLOTS[cell.sgKey]
+      const enabled = data.appSettings.toggles?.[sgSlot.toggleKey]
+
+      if (!enabled) {
+        cells.push(
+          <td key={day} style={styles.td}>
+            <div style={{ ...styles.fixedCard, background: fixedColor(sgSlot?.cls) }}>{sgSlot?.label}</div>
+          </td>
+        )
+        continue
+      }
+
+      const sgData = getSgData(week, cell.sgKey, day)
+      const hasData = sgData.desc || SG_CELLS.some(c => sgData[c.id])
+
       cells.push(
         <td key={day} style={styles.td}>
-          <div style={{ ...styles.fixedCard, background: fixedColor(sgSlot?.cls), minHeight: 56, fontSize: 10 }}>
-            {sgSlot?.label} groups
+          <div
+            style={{ ...styles.sgCard, background: fixedColor(sgSlot?.cls) }}
+            onClick={() => onOpenSgModal(cell.sgKey, day)}
+          >
+            {hasData ? (
+              <>
+                {sgData.desc && <div style={styles.sgDesc}>{sgData.desc}</div>}
+                <div style={styles.sgGrid}>
+                  {SG_CELLS.map(c => (
+                    <div key={c.id} style={styles.sgCell}>
+                      <div style={styles.sgCellLabel}>{c.label}</div>
+                      <div style={styles.sgNames}>{sgData[c.id] || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={styles.sgEmptyHint}>Click to add groups</div>
+            )}
           </div>
         </td>
       )
@@ -374,4 +439,11 @@ const styles = {
   groupPill: { display: 'flex', alignItems: 'center', gap: 6, background: '#F0F2F7', border: '1px solid #D4D9E5', borderRadius: 20, padding: '4px 10px 4px 12px' },
   groupPillLabel: { fontSize: 10, fontWeight: 700, color: '#5A6478' },
   groupPillSelect: { border: 'none', background: 'none', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', color: '#1C2333' },
+  sgCard: { borderRadius: 6, padding: '6px 7px', minHeight: 56, cursor: 'pointer', fontSize: 9 },
+  sgDesc: { fontSize: 10, fontWeight: 700, marginBottom: 4 },
+  sgGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 },
+  sgCell: { background: 'rgba(255,255,255,0.55)', borderRadius: 4, padding: '3px 4px' },
+  sgCellLabel: { fontSize: 7, fontWeight: 800, textTransform: 'uppercase', color: '#5A6478' },
+  sgNames: { fontSize: 9, fontWeight: 600 },
+  sgEmptyHint: { fontSize: 9, fontStyle: 'italic', color: '#5A6478', textAlign: 'center', padding: '10px 0' },
 }
