@@ -1,17 +1,25 @@
 import { useState } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName } from '../lib/plannerHelpers'
+import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
 
-export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
+export default function WeeklyPlanner({ data, onSave }) {
   const rows = data.rows || DEFAULT_ROWS
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const weeks = data.weeks
   const activeWeekId = data.activeWeekId || (weeks[0] && weeks[0].id)
   const activeWeek = getWeek(data, activeWeekId)
 
+  const [myGroupPrefs, setMyGroupPrefs] = useState(loadMyGroupPrefs)
   const [modalCtx, setModalCtx] = useState(null) // { subj, day, groupId, existing } | null
+
+  function setActiveGroupId(subj, groupId) {
+    const next = { ...myGroupPrefs, [subj]: groupId }
+    setMyGroupPrefs(next)
+    saveMyGroupPrefs(next)
+  }
 
   function switchWeek(id) {
     onSave({ ...data, activeWeekId: id })
@@ -22,11 +30,13 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
   }
 
   function openAdd(subj, day) {
-    setModalCtx({ subj, day, groupId: null, existing: null })
+    const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
+    setModalCtx({ subj, day, groupId, existing: null })
   }
 
   function openEdit(subj, day, existing) {
-    setModalCtx({ subj, day, groupId: null, existing })
+    const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
+    setModalCtx({ subj, day, groupId, existing })
   }
 
   function closeModal() {
@@ -55,7 +65,8 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
 
   function quickDelete(subj, day) {
     if (!window.confirm('Remove this session?')) return
-    const newWeek = withSessionSet(activeWeek, subj, day, null, null)
+    const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
+    const newWeek = withSessionSet(activeWeek, subj, day, groupId, null)
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
   }
 
@@ -91,6 +102,8 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
         )}
       </div>
 
+      <GroupBar planSubjects={planSubjects} data={data} myGroupPrefs={myGroupPrefs} onChangeGroup={setActiveGroupId} />
+
       <div style={styles.tableWrap}>
         <table style={styles.table}>
           <thead>
@@ -121,6 +134,8 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
                   key={ri}
                   row={row}
                   week={activeWeek}
+                  data={data}
+                  myGroupPrefs={myGroupPrefs}
                   onAdd={openAdd}
                   onEdit={openEdit}
                   onDelete={quickDelete}
@@ -135,11 +150,41 @@ export default function WeeklyPlanner({ data, onSave, myGroupPrefs }) {
       <SessionModal
         open={!!modalCtx}
         initial={modalCtx?.existing}
-        title={modalCtx ? `${planSubjects[modalCtx.subj]?.label || modalCtx.subj} — ${modalCtx.day}` : ''}
+        title={modalCtx ? `${planSubjects[modalCtx.subj]?.label || modalCtx.subj} — ${modalCtx.day}${modalCtx.groupId ? ` (${getGroupName(data, modalCtx.subj, modalCtx.groupId)})` : ''}` : ''}
         onSave={handleSaveSession}
         onDelete={modalCtx?.existing ? handleDeleteSession : null}
         onClose={closeModal}
       />
+    </div>
+  )
+}
+
+// Small pill bar — one dropdown per subject with ability groups enabled,
+// letting this teacher pick which group's plan they're viewing/editing.
+function GroupBar({ planSubjects, data, myGroupPrefs, onChangeGroup }) {
+  const groupedSubjects = Object.keys(planSubjects).filter(s => groupsEnabledFor(data, s))
+  if (!groupedSubjects.length) return null
+
+  return (
+    <div style={styles.groupBar}>
+      {groupedSubjects.map(subj => {
+        const cfg = data.appSettings.abilityGroups[subj]
+        const activeId = getEffectiveGroupId(data, subj, myGroupPrefs)
+        return (
+          <div key={subj} style={styles.groupPill}>
+            <label style={styles.groupPillLabel}>{planSubjects[subj].label}</label>
+            <select
+              value={activeId || ''}
+              onChange={(e) => onChangeGroup(subj, e.target.value)}
+              style={styles.groupPillSelect}
+            >
+              {cfg.groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -193,7 +238,7 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
   )
 }
 
-function RowRenderer({ row, week, onAdd, onEdit, onDelete, onSaveNotes }) {
+function RowRenderer({ row, week, data, myGroupPrefs, onAdd, onEdit, onDelete, onSaveNotes }) {
   const cells = []
   let skip = 0
 
@@ -258,7 +303,8 @@ function RowRenderer({ row, week, onAdd, onEdit, onDelete, onSaveNotes }) {
 
     if (cell.plannable) {
       const subj = cell.subject
-      const session = getSessionFor(week, subj, day, null)
+      const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
+      const session = getSessionFor(week, subj, day, groupId)
       cells.push(
         <td key={day} style={styles.td}>
           {session ? (
@@ -324,4 +370,8 @@ const styles = {
   notesSubLabel: { fontSize: 8, fontWeight: 700, letterSpacing: 0.6, color: '#5A6478', marginBottom: 6 },
   notesText: { fontSize: 10, color: '#5A6478', cursor: 'pointer', whiteSpace: 'pre-line', width: '100%' },
   notesTextarea: { width: '100%', minHeight: 70, fontSize: 10, fontFamily: 'inherit', border: '1px solid #D4D9E5', borderRadius: 4, padding: 4, resize: 'vertical', boxSizing: 'border-box' },
+  groupBar: { display: 'flex', gap: 8, flexWrap: 'wrap', padding: '10px 20px 0' },
+  groupPill: { display: 'flex', alignItems: 'center', gap: 6, background: '#F0F2F7', border: '1px solid #D4D9E5', borderRadius: 20, padding: '4px 10px 4px 12px' },
+  groupPillLabel: { fontSize: 10, fontWeight: 700, color: '#5A6478' },
+  groupPillSelect: { border: 'none', background: 'none', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', color: '#1C2333' },
 }

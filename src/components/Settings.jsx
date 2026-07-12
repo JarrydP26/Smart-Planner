@@ -12,6 +12,7 @@ const TOGGLE_DEFINITIONS = [
 ]
 
 export default function Settings({ data, onSave }) {
+  const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const [className, setClassName] = useState(data.appSettings.className)
   const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
   const [termWeeks, setTermWeeks] = useState(data.appSettings.termWeeks)
@@ -87,6 +88,66 @@ export default function Settings({ data, onSave }) {
     })
   }
 
+  function toggleAbilityGroups(subj, enabled) {
+    const existing = data.appSettings.abilityGroups?.[subj] || { enabled: false, groups: [] }
+    const cfg = { ...existing, enabled }
+    if (enabled && cfg.groups.length === 0) {
+      // Seed with two sensible starting groups so it's not empty
+      cfg.groups = [
+        { id: 'g' + Date.now(), name: 'Group A' },
+        { id: 'g' + (Date.now() + 1), name: 'Group B' },
+      ]
+    }
+    onSave({
+      ...data,
+      appSettings: {
+        ...data.appSettings,
+        abilityGroups: { ...data.appSettings.abilityGroups, [subj]: cfg },
+      },
+    })
+  }
+
+  function addAbilityGroup(subj) {
+    const name = window.prompt('Name this group (e.g. "Level 3/4", "Extension"):')
+    if (!name || !name.trim()) return
+    const cfg = data.appSettings.abilityGroups[subj]
+    const newCfg = { ...cfg, groups: [...cfg.groups, { id: 'g' + Date.now(), name: name.trim() }] }
+    onSave({
+      ...data,
+      appSettings: {
+        ...data.appSettings,
+        abilityGroups: { ...data.appSettings.abilityGroups, [subj]: newCfg },
+      },
+    })
+  }
+
+  function renameAbilityGroup(subj, groupId, newName) {
+    if (!newName.trim()) return
+    const cfg = data.appSettings.abilityGroups[subj]
+    const newCfg = { ...cfg, groups: cfg.groups.map(g => g.id === groupId ? { ...g, name: newName.trim() } : g) }
+    onSave({
+      ...data,
+      appSettings: {
+        ...data.appSettings,
+        abilityGroups: { ...data.appSettings.abilityGroups, [subj]: newCfg },
+      },
+    })
+  }
+
+  function deleteAbilityGroup(subj, groupId) {
+    if (!window.confirm('Delete this group? Planning saved under it will be hidden (not deleted) unless you re-add a group with matching data.')) return
+    const cfg = data.appSettings.abilityGroups[subj]
+    const groups = cfg.groups.filter(g => g.id !== groupId)
+    const newCfg = { ...cfg, groups, enabled: groups.length ? cfg.enabled : false }
+    onSave({
+      ...data,
+      appSettings: {
+        ...data.appSettings,
+        abilityGroups: { ...data.appSettings.abilityGroups, [subj]: newCfg },
+      },
+    })
+  }
+
   return (
     <div style={styles.wrap}>
       <div style={styles.section}>
@@ -151,6 +212,50 @@ export default function Settings({ data, onSave }) {
           </div>
         ))}
       </div>
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Ability groups</div>
+        <div style={styles.sectionDesc}>Useful if multiple teachers plan the same subject for different ability groups sharing this planner (e.g. 3 maths groups).</div>
+        {Object.entries(planSubjects).map(([subj, meta]) => {
+          const cfg = data.appSettings.abilityGroups?.[subj] || { enabled: false, groups: [] }
+          return (
+            <div key={subj} style={styles.groupSubjBlock}>
+              <div style={styles.toggleRow}>
+                <div>
+                  <div style={styles.toggleLabel}>{meta.label}</div>
+                  <div style={styles.toggleHint}>{cfg.enabled ? `${cfg.groups.length} group${cfg.groups.length === 1 ? '' : 's'}` : 'Off — one shared plan for everyone'}</div>
+                </div>
+                <label style={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={!!cfg.enabled}
+                    onChange={(e) => toggleAbilityGroups(subj, e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }}
+                  />
+                  <span style={{ ...styles.slider, background: cfg.enabled ? '#3A86D4' : '#D4D9E5' }}>
+                    <span style={{ ...styles.sliderKnob, transform: cfg.enabled ? 'translateX(18px)' : 'translateX(0)' }} />
+                  </span>
+                </label>
+              </div>
+              {cfg.enabled && (
+                <div style={styles.groupList}>
+                  {cfg.groups.map(g => (
+                    <div key={g.id} style={styles.groupChip}>
+                      <input
+                        type="text"
+                        defaultValue={g.name}
+                        onBlur={(e) => renameAbilityGroup(subj, g.id, e.target.value)}
+                        style={styles.groupChipInput}
+                      />
+                      <button style={styles.groupChipDelete} title="Delete group" onClick={() => deleteAbilityGroup(subj, g.id)}>✕</button>
+                    </div>
+                  ))}
+                  <button style={styles.addGroupBtn} onClick={() => addAbilityGroup(subj)}>+ Add group</button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -172,4 +277,10 @@ const styles = {
   switch: { position: 'relative', width: 40, height: 22, flexShrink: 0, display: 'inline-block', cursor: 'pointer' },
   slider: { position: 'absolute', inset: 0, borderRadius: 22, transition: 'background 0.15s' },
   sliderKnob: { position: 'absolute', width: 18, height: 18, left: 2, top: 2, background: '#fff', borderRadius: '50%', transition: 'transform 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', display: 'block' },
+  groupSubjBlock: { padding: '10px 0', borderBottom: '1px solid #D4D9E5' },
+  groupList: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  groupChip: { display: 'flex', alignItems: 'center', gap: 4, background: '#F0F2F7', border: '1px solid #D4D9E5', borderRadius: 6, padding: '3px 4px 3px 8px' },
+  groupChipInput: { border: 'none', background: 'none', fontSize: 11, fontFamily: 'inherit', width: 90, fontWeight: 600 },
+  groupChipDelete: { border: 'none', background: 'none', color: '#C0392B', fontSize: 11, cursor: 'pointer', padding: '2px 4px' },
+  addGroupBtn: { border: '1.5px dashed #D4D9E5', background: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, fontWeight: 600, color: '#3A86D4', cursor: 'pointer' },
 }
