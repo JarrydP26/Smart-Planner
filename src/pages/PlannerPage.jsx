@@ -87,6 +87,11 @@ export default function PlannerPage() {
         )}
 
         <div style={styles.sectionLabel}>Settings</div>
+        {!isBlank && (
+          <button style={view === 'timetable-setup' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('timetable-setup')}>
+            📐 Timetable
+          </button>
+        )}
         <button style={view === 'settings' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('settings')}>
           🔧 Settings
         </button>
@@ -111,6 +116,8 @@ export default function PlannerPage() {
             <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
           ) : view === 'settings' ? (
             <Settings data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'timetable-setup' ? (
+            <TimetableSetup data={data} onSave={saveNow} onDone={() => setView('weekly')} />
           ) : planSubjects[view] ? (
             <TermView data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
           ) : (
