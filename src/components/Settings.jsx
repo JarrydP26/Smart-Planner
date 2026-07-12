@@ -18,6 +18,22 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
   const [termWeeks, setTermWeeks] = useState(data.appSettings.termWeeks)
   const [currentTerm, setCurrentTerm] = useState(data.appSettings.currentTerm || 1)
   const [savedMsg, setSavedMsg] = useState(false)
+  const [sgLabels, setSgLabels] = useState(() => {
+    const overrides = data.appSettings.sgCellLabels || {}
+    const initial = {}
+    SG_CELLS.forEach(c => { initial[c.id] = overrides[c.id] || c.label })
+    return initial
+  })
+  const [sgSavedMsg, setSgSavedMsg] = useState(false)
+
+  function saveSgLabels() {
+    onSave({
+      ...data,
+      appSettings: { ...data.appSettings, sgCellLabels: sgLabels },
+    })
+    setSgSavedMsg(true)
+    setTimeout(() => setSgSavedMsg(false), 2000)
+  }
 
   function adjustWeekCount(target) {
     let newData = data
@@ -131,17 +147,6 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
       appSettings: {
         ...data.appSettings,
         abilityGroups: { ...data.appSettings.abilityGroups, [subj]: newCfg },
-      },
-    })
-  }
-
-  function renameSgCellLabel(id, newLabel) {
-    if (!newLabel.trim()) return
-    onSave({
-      ...data,
-      appSettings: {
-        ...data.appSettings,
-        sgCellLabels: { ...data.appSettings.sgCellLabels, [id]: newLabel.trim() },
       },
     })
   }
@@ -279,12 +284,16 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
               <span style={styles.sgLabelDefault}>{c.label}</span>
               <input
                 type="text"
-                defaultValue={data.appSettings.sgCellLabels?.[c.id] || c.label}
-                onBlur={(e) => renameSgCellLabel(c.id, e.target.value)}
+                value={sgLabels[c.id] ?? c.label}
+                onChange={(e) => setSgLabels({ ...sgLabels, [c.id]: e.target.value })}
                 style={styles.sgLabelInput}
               />
             </div>
           ))}
+        </div>
+        <div style={styles.saveRow}>
+          <button style={styles.primaryBtn} onClick={saveSgLabels}>Save labels</button>
+          {sgSavedMsg && <span style={styles.savedMsg}>Saved ✓</span>}
         </div>
       </div>
     </div>
@@ -302,6 +311,7 @@ const styles = {
   hint: { fontSize: 10, color: '#7A849E', marginTop: 4 },
   primaryBtn: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   savedMsg: { fontSize: 11, color: '#2EAF6E' },
+  saveRow: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
   toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #D4D9E5' },
   toggleLabel: { fontSize: 12, fontWeight: 600 },
   toggleHint: { fontSize: 10, color: '#7A849E', marginTop: 1 },

@@ -148,7 +148,6 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
         )}
         <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
         <button style={styles.blockOutBtn} onClick={() => setBlockOutOpen(true)}>🚫 Block out</button>
-        <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Print</button>
       </div>
 
       <GroupBar planSubjects={planSubjects} data={data} myGroupPrefs={myGroupPrefs} onChangeGroup={setActiveGroupId} />
