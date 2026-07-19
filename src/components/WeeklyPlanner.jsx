@@ -332,6 +332,12 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
 }
 
 function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
+  // For plannable rows, find which subject this row is for so we can show
+  // that subject's weekly focus topic (set in Term View) right next to the
+  // row's time/name — the same per-subject topic, just surfaced here too.
+  const rowSubject = Object.values(row.days || {}).find(c => c?.plannable)?.subject
+  const rowTopic = rowSubject ? week.topics?.[rowSubject] : null
+
   const cells = []
 
   for (const day of DAYS) {
@@ -473,6 +479,7 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
       <td style={styles.timeCell}>
         <div style={styles.slotName}>{row.name}</div>
         <div style={styles.time}>{row.time}</div>
+        {rowTopic && <div style={styles.weekTopic}>🎯 {rowTopic}</div>}
       </td>
       {cells}
     </tr>
@@ -497,6 +504,7 @@ const styles = {
   timeCell: { padding: '6px 8px', fontSize: 10, fontWeight: 700, color: '#7A849E', verticalAlign: 'top', borderRight: '2px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', background: '#F8F9FB', width: 100 },
   slotName: { fontSize: 11, fontWeight: 800, color: '#1C2333' },
   time: { fontSize: 9 },
+  weekTopic: { fontSize: 9, fontStyle: 'italic', color: '#3A86D4', marginTop: 3, lineHeight: 1.3 },
   td: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 120 },
   fixedCard: { borderRadius: 6, padding: '6px 8px', fontSize: 11, fontWeight: 700, textAlign: 'center', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F0F2F7' },
   planCard: { borderRadius: 6, padding: '7px 9px', minHeight: 56, cursor: 'pointer', position: 'relative', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4', background: '#FAFBFD' },
