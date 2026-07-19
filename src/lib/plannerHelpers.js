@@ -3,7 +3,7 @@
 // explicit data object (and return a new object) rather than mutating
 // global variables, since React state should be updated immutably.
 
-import { SG_CELLS, DEFAULT_PLAN_SUBJECTS } from './timetableDefaults'
+import { SG_CELLS, DEFAULT_PLAN_SUBJECTS, DEFAULT_ROWS, DAYS } from './timetableDefaults'
 
 export function getWeek(data, weekId) {
   return data.weeks.find(w => w.id === weekId) || null
@@ -366,12 +366,31 @@ export function mergeData(base, mine, theirs) {
 // day pushes the whole rest of that subject's sequence back by one lesson.
 // ────────────────────────────────────────────────────────────────
 
+// The days (in Monday–Friday order) this subject actually has a plannable
+// cell in the CURRENT timetable. This is the real source of truth for
+// "which slots exist" — planSubjects' own day list is just descriptive
+// metadata used for Term View's columns, and can end up out of step with
+// whatever a customised Timetable Setup actually has configured. Using the
+// real rows avoids bump reading from a day that isn't a genuine lesson
+// slot (which is what made a bumped session look like it just vanished).
+export function getSubjectPlannableDays(data, subj) {
+  const rows = data.rows || DEFAULT_ROWS
+  const daysSet = new Set()
+  rows.forEach(row => {
+    if (row.type !== 'slot' || !row.days) return
+    DAYS.forEach(day => {
+      const cell = row.days[day]
+      if (cell?.plannable && cell.subject === subj) daysSet.add(day)
+    })
+  })
+  return DAYS.filter(d => daysSet.has(d))
+}
+
 // The ordered sequence of {weekId, day} slots for a subject across the
-// whole term, based on that subject's configured meeting days
-// (planSubjects[subj].days), in week order.
+// whole term, based on the days it's actually scheduled on in the current
+// timetable, in week order.
 export function getSubjectSlots(data, subj) {
-  const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
-  const days = planSubjects[subj]?.days || []
+  const days = getSubjectPlannableDays(data, subj)
   const slots = []
   data.weeks.forEach(week => {
     days.forEach(day => slots.push({ weekId: week.id, day }))
