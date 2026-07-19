@@ -411,26 +411,32 @@ export function bumpWouldLoseContent(data, subj, groupId) {
 }
 
 // Returns a NEW data object with this subject's sessions shifted: the
-// session at (fromWeekId, fromDay) is replaced by whatever was in the next
-// slot, that slot gets what was in the slot after IT, and so on to the end
-// of term. The very last slot ends up empty (or loses its content, if it
-// had any — see bumpWouldLoseContent above).
+// session that was at (fromWeekId, fromDay) moves INTO the next slot, that
+// slot's original content moves into the slot after IT, and so on to the
+// end of term — so nothing already planned gets overwritten, it's all just
+// delayed by one session. The very first slot (where you clicked bump)
+// ends up empty, since its content has moved forward to continue next
+// time. Only the very last slot in the whole sequence can lose content —
+// see bumpWouldLoseContent above.
 export function bumpSubjectForward(data, subj, fromWeekId, fromDay, groupId) {
   const slots = getSubjectSlots(data, subj)
   const fromIndex = slots.findIndex(s => s.weekId === fromWeekId && s.day === fromDay)
   if (fromIndex === -1) return data
 
   // Read every affected session up front, before any writes, since each
-  // slot's new content comes from the slot that currently follows it.
+  // slot's new content comes from the slot that currently precedes it.
   const weekById = (id) => data.weeks.find(w => w.id === id)
   const originalSessions = slots.slice(fromIndex).map(s => getSessionFor(weekById(s.weekId), subj, s.day, groupId))
 
   let newData = data
   for (let i = fromIndex; i < slots.length; i++) {
     const { weekId, day } = slots[i]
-    const nextSession = originalSessions[i - fromIndex + 1] ?? null
+    const k = i - fromIndex
+    // The first affected slot is emptied (its content moved onward); every
+    // later slot inherits whatever was originally one slot earlier.
+    const newSession = k === 0 ? null : originalSessions[k - 1]
     const week = newData.weeks.find(w => w.id === weekId)
-    const newWeek = withSessionSet(week, subj, day, groupId, nextSession)
+    const newWeek = withSessionSet(week, subj, day, groupId, newSession)
     newData = withWeekUpdated(newData, weekId, newWeek)
   }
   return newData
