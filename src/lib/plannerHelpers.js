@@ -377,7 +377,7 @@ export function getSubjectPlannableDays(data, subj) {
   const rows = data.rows || DEFAULT_ROWS
   const daysSet = new Set()
   rows.forEach(row => {
-    if (row.type !== 'slot' || !row.days) return
+    if (!row.days) return // block-header / break rows have no per-day cells at all
     DAYS.forEach(day => {
       const cell = row.days[day]
       if (cell?.plannable && cell.subject === subj) daysSet.add(day)
