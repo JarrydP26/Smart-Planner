@@ -36,9 +36,16 @@ export default function TimetableSetup({ data, onSave, onDone, snapshotForUndo }
   const [busy, setBusy] = useState(false)
 
   async function useDefaultTimetable() {
+    // This resets rows/planSubjects/specialistBlocks entirely — if there's
+    // already a real (possibly custom) timetable in place, confirm first.
+    // Landing on this screen doesn't only happen for brand-new planners
+    // (e.g. reopening via "Edit Timetable"), so this button needs the same
+    // safety net Save Timetable already has.
+    if (data.weeks.length > 0 && !window.confirm(
+      "This will REPLACE your current timetable with the standard Grade 3 layout, discarding any custom rows, subjects, or specialist sessions you've set up. Existing session content is kept where subject/day keys still match, but your timetable structure itself will be reset. Continue?"
+    )) return
+
     setBusy(true)
-    // Only worth snapshotting if this planner already has real content —
-    // resetting a genuinely blank planner to defaults has nothing to undo.
     if (data.weeks.length > 0) snapshotForUndo?.('reset to default timetable')
     const withTimetable = { ...data, rows: null, planSubjects: null, specialistBlocks: null }
     const finalData = data.weeks.length === 0
@@ -222,8 +229,13 @@ export default function TimetableSetup({ data, onSave, onDone, snapshotForUndo }
             Circle, Learning Powers, Maths, Spelling, Maths to Self, Read to Self,
             Writing, Reading, Afternoon — Monday to Friday.
           </div>
+          {data.weeks.length > 0 && (
+            <div style={styles.resetWarning}>
+              ⚠️ This planner already has a timetable set up. Clicking below replaces it with this standard layout — your current rows, subjects, and specialist sessions will be discarded.
+            </div>
+          )}
           <button style={styles.button} onClick={useDefaultTimetable} disabled={busy}>
-            {busy ? 'Setting up…' : 'Use this timetable'}
+            {busy ? 'Setting up…' : data.weeks.length > 0 ? 'Replace with this timetable' : 'Use this timetable'}
           </button>
         </div>
 
@@ -498,6 +510,7 @@ const styles = {
   card: { background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 10, padding: '18px 20px', marginBottom: 16 },
   cardTitle: { fontSize: 14, fontWeight: 700, marginBottom: 6 },
   cardDesc: { fontSize: 12, color: '#7A849E', lineHeight: 1.5, marginBottom: 14 },
+  resetWarning: { background: '#FFF0F0', border: '1px solid #E8B0B0', color: '#C0392B', borderRadius: 7, padding: '9px 12px', fontSize: 11.5, lineHeight: 1.5, marginBottom: 12 },
   button: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   buttonOutline: { padding: '9px 16px', background: '#fff', color: '#1C2333', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 4 },
   banner: { background: '#FFF6E0', border: '1px solid #F0D89A', borderRadius: 8, padding: '10px 14px', fontSize: 12, marginBottom: 16, lineHeight: 1.5 },
