@@ -20,6 +20,23 @@ export default function PlannerPage() {
 
   const { data, loading: dataLoading, error: dataError, saving, save, saveNow, conflictWarning } = usePlannerData(plannerId)
 
+  // Undo stack — up to 10 steps. Every destructive action across the app
+  // (delete session, clear week, delete ability group, bump, etc.) already
+  // calls snapshotForUndo(label) right before making its change; this is
+  // what actually captures and restores those snapshots.
+  const [undoStack, setUndoStack] = useState([])
+
+  function snapshotForUndo(label) {
+    setUndoStack(stack => [...stack, { label, data }].slice(-10))
+  }
+
+  async function handleUndo() {
+    if (!undoStack.length) return
+    const last = undoStack[undoStack.length - 1]
+    setUndoStack(stack => stack.slice(0, -1))
+    await saveNow(last.data)
+  }
+
   useEffect(() => {
     async function load() {
       setPlannerLoading(true)
@@ -86,6 +103,11 @@ export default function PlannerPage() {
         <div style={styles.topBar}>
           <button style={styles.backBtn} onClick={() => navigate('/')}>← All planners</button>
           <span style={styles.plannerName}>{planner.name}</span>
+          {undoStack.length > 0 && (
+            <button style={styles.undoBtn} onClick={handleUndo} title={`Undo: ${undoStack[undoStack.length - 1].label}`}>
+              ↩️ Undo ({undoStack.length})
+            </button>
+          )}
           <span style={styles.saveStatus}>{saving ? 'Saving…' : ''}</span>
         </div>
 
@@ -94,15 +116,15 @@ export default function PlannerPage() {
         )}
 
         {isBlank ? (
-          <TimetableSetup data={data} onSave={saveNow} />
+          <TimetableSetup data={data} onSave={saveNow} snapshotForUndo={snapshotForUndo} />
         ) : view === 'weekly' ? (
-          <WeeklyPlanner data={data} onSave={save} />
+          <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
         ) : view === 'timetable' ? (
-          <TimetableSetup data={data} onSave={saveNow} />
+          <TimetableSetup data={data} onSave={saveNow} onDone={() => setView('weekly')} snapshotForUndo={snapshotForUndo} />
         ) : view === 'settings' ? (
-          <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} />
+          <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} snapshotForUndo={snapshotForUndo} />
         ) : planSubjects[view] ? (
-          <TermView data={data} onSave={save} subj={view} />
+          <TermView data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
         ) : (
           <div style={{ padding: 30 }}>Unknown view.</div>
         )}
@@ -124,6 +146,7 @@ const styles = {
   topBar: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#fff', borderBottom: '1px solid #D4D9E5' },
   backBtn: { fontSize: 12, padding: '6px 12px', border: '1.5px solid #D4D9E5', borderRadius: 6, background: 'transparent', cursor: 'pointer' },
   plannerName: { fontSize: 14, fontWeight: 700 },
+  undoBtn: { fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#F0F2F7', color: '#1C2333', cursor: 'pointer', fontWeight: 600 },
   saveStatus: { fontSize: 11, color: '#7A849E', marginLeft: 'auto' },
   conflictBanner: { fontSize: 11, color: '#8A6D00', background: '#FFF6DB', border: '1px solid #F0DE9A', padding: '8px 16px', margin: '10px 24px 0' },
   center: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" },
