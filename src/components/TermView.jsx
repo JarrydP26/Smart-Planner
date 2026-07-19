@@ -96,6 +96,12 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
     onSave(bumpSubjectForward(data, subj, weekId, day, groupId))
   }
 
+  function handleModalBump() {
+    const { weekId, day, groupId } = modalCtx
+    handleBumpSession(weekId, day, groupId)
+    closeModal()
+  }
+
   function deleteWeekContent(weekId) {
     const week = data.weeks.find(w => w.id === weekId)
     let newWeek = week
@@ -232,12 +238,6 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
                           </div>
                         ) : session ? (
                           <div style={{ ...styles.sessionCard, borderLeftColor: acc }} onClick={() => openEdit(week.id, day, activeGroupId, session)}>
-                            <button
-                              className="no-print"
-                              style={styles.bumpBtn}
-                              title="Push this and every later session for this subject forward by one"
-                              onClick={(e) => { e.stopPropagation(); handleBumpSession(week.id, day, activeGroupId) }}
-                            >⏩</button>
                             <div style={{ ...styles.cardTitle, color: acc }}>{session.title}</div>
                             {session.li && <div style={styles.cardLi}>🎯 {session.li}</div>}
                             <div style={styles.cardPreview}>{linkify(session.detail)}</div>
@@ -262,6 +262,7 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
         title={modalCtx ? `${subjMeta.label} — ${modalCtx.day}${modalCtx.groupId ? ` (${groupCfg?.groups.find(g => g.id === modalCtx.groupId)?.name || ''})` : ''}` : ''}
         onSave={handleSaveSession}
         onDelete={modalCtx?.existing ? handleDeleteSession : null}
+        onBump={modalCtx?.existing ? handleModalBump : null}
         onClose={closeModal}
       />
 
@@ -347,8 +348,7 @@ const styles = {
   deleteWeekBtn: { position: 'absolute', top: 6, right: 6, width: 20, height: 20, border: 'none', borderRadius: 4, background: '#FFE8E8', color: '#C0392B', fontSize: 10, cursor: 'pointer' },
   topicInput: { marginTop: 4, display: 'block', width: '100%', border: '1px solid #D4D9E5', borderRadius: 4, fontSize: 11, fontStyle: 'italic', color: '#3A86D4', padding: '2px 4px', fontFamily: 'inherit', boxSizing: 'border-box' },
   cell: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 150 },
-  sessionCard: { padding: '8px 10px', minHeight: 64, cursor: 'pointer', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4', position: 'relative' },
-  bumpBtn: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer' },
+  sessionCard: { padding: '8px 10px', minHeight: 64, cursor: 'pointer', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4' },
   cardTitle: { fontSize: 11.5, fontWeight: 700, marginBottom: 3, paddingRight: 20 },
   cardPreview: { fontSize: 10, color: '#7A849E', whiteSpace: 'pre-line' },
   cardLi: { fontSize: 9.5, color: '#3A6EA5', fontStyle: 'italic', marginBottom: 3 },

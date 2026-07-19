@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export default function SessionModal({ open, initial, title, onSave, onDelete, onClose }) {
+export default function SessionModal({ open, initial, title, onSave, onDelete, onBump, onClose }) {
   const [form, setForm] = useState({ title: '', detail: '', li: '', resources: '' })
   const [downOnBackdrop, setDownOnBackdrop] = useState(false)
 
@@ -84,6 +84,13 @@ export default function SessionModal({ open, initial, title, onSave, onDelete, o
         <div style={styles.actions}>
           {onDelete && <button style={styles.dangerBtn} onClick={onDelete}>Delete</button>}
           <button style={styles.outlineBtn} onClick={onClose}>Cancel</button>
+          {onBump && (
+            <button
+              style={styles.bumpBtn}
+              title="Push this and every later session for this subject forward by one"
+              onClick={onBump}
+            >⏩ Bump</button>
+          )}
           <button style={styles.primaryBtn} onClick={handleSave}>Save</button>
         </div>
       </div>
@@ -103,5 +110,6 @@ const styles = {
   actions: { display: 'flex', gap: 7, justifyContent: 'flex-end', marginTop: 12 },
   dangerBtn: { padding: '7px 13px', borderRadius: 7, border: 'none', background: '#FFE8E8', color: '#C0392B', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginRight: 'auto' },
   outlineBtn: { padding: '7px 13px', borderRadius: 7, border: '1.5px solid #D4D9E5', background: 'transparent', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  bumpBtn: { padding: '7px 13px', borderRadius: 7, border: '1.5px solid #3A86D4', background: '#EAF2FC', color: '#2870D4', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   primaryBtn: { padding: '7px 13px', borderRadius: 7, border: 'none', background: '#3A86D4', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
 }

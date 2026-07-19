@@ -118,7 +118,8 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
 
   // Bumps this session forward: everything scheduled after it for this
   // subject (and this ability group, if enabled) shifts one slot later,
-  // across the whole term — not just the active week.
+  // across the whole term — not just the active week. Triggered from the
+  // session modal, right next to Save.
   function handleBumpSession(subj, day) {
     const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
     if (bumpWouldLoseContent(data, subj, groupId)) {
@@ -128,6 +129,12 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
     }
     snapshotForUndo?.('bump session')
     onSave(bumpSubjectForward(data, subj, activeWeek.id, day, groupId))
+  }
+
+  function handleModalBump() {
+    const { subj, day } = modalCtx
+    handleBumpSession(subj, day)
+    closeModal()
   }
 
   function handleSaveNotes(notesKey, value) {
@@ -202,7 +209,6 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
                   onAdd={openAdd}
                   onEdit={openEdit}
                   onDelete={quickDelete}
-                  onBump={handleBumpSession}
                   onSaveNotes={handleSaveNotes}
                   onOpenSgModal={openSgModal}
                 />
@@ -218,6 +224,7 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
         title={modalCtx ? `${planSubjects[modalCtx.subj]?.label || modalCtx.subj} — ${modalCtx.day}${modalCtx.groupId ? ` (${getGroupName(data, modalCtx.subj, modalCtx.groupId)})` : ''}` : ''}
         onSave={handleSaveSession}
         onDelete={modalCtx?.existing ? handleDeleteSession : null}
+        onBump={modalCtx?.existing ? handleModalBump : null}
         onClose={closeModal}
       />
 
@@ -324,7 +331,7 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
   )
 }
 
-function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onBump, onSaveNotes, onOpenSgModal }) {
+function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
   const cells = []
 
   for (const day of DAYS) {
@@ -445,17 +452,10 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
               {session.resources && (
                 <div style={styles.cardResource}>🔗 {linkify(session.resources)}</div>
               )}
-              <div style={styles.cardActions}>
-                <button
-                  style={styles.bumpBtn}
-                  title="Push this and every later session for this subject forward by one"
-                  onClick={(e) => { e.stopPropagation(); onBump(subj, day) }}
-                >⏩</button>
-                <button
-                  style={styles.deleteBtn}
-                  onClick={(e) => { e.stopPropagation(); onDelete(subj, day) }}
-                >🗑</button>
-              </div>
+              <button
+                style={styles.deleteBtn}
+                onClick={(e) => { e.stopPropagation(); onDelete(subj, day) }}
+              >🗑</button>
             </div>
           ) : (
             <div style={styles.emptyCell} onClick={() => onAdd(subj, day)}>+</div>
@@ -500,14 +500,12 @@ const styles = {
   td: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 120 },
   fixedCard: { borderRadius: 6, padding: '6px 8px', fontSize: 11, fontWeight: 700, textAlign: 'center', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F0F2F7' },
   planCard: { borderRadius: 6, padding: '7px 9px', minHeight: 56, cursor: 'pointer', position: 'relative', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4', background: '#FAFBFD' },
-  cardTitle: { fontSize: 12, fontWeight: 700, marginBottom: 3, color: '#2870D4', paddingRight: 42 },
+  cardTitle: { fontSize: 12, fontWeight: 700, marginBottom: 3, color: '#2870D4' },
   cardPreview: { fontSize: 10, color: '#7A849E', whiteSpace: 'pre-line' },
   cardLi: { fontSize: 9.5, color: '#3A6EA5', fontStyle: 'italic', marginBottom: 3 },
   cardResource: { fontSize: 9, marginTop: 3 },
   emptyCell: { borderRadius: 6, minHeight: 56, border: '1.5px dashed #D4D9E5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7A849E', fontSize: 18, cursor: 'pointer' },
-  cardActions: { position: 'absolute', top: 4, right: 4, display: 'flex', gap: 3 },
-  bumpBtn: { width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer' },
-  deleteBtn: { width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer' },
+  deleteBtn: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer', display: 'none' },
   notesCard: { padding: '10px 8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' },
   notesLabel: { fontSize: 12, fontWeight: 800, marginBottom: 4 },
   notesSubLabel: { fontSize: 8, fontWeight: 700, letterSpacing: 0.6, color: '#5A6478', marginBottom: 6 },
