@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
 import { DEFAULT_PLAN_SUBJECTS, SG_CELLS } from '../lib/timetableDefaults'
 import { withNewWeek, withNextWeek, withRelabeledTerm, getMonday } from '../lib/plannerHelpers'
 
@@ -11,7 +12,7 @@ const TOGGLE_DEFINITIONS = [
   { key: 'brainBreak', label: 'Brain Break — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
 ]
 
-export default function Settings({ data, onSave, snapshotForUndo }) {
+export default function Settings({ data, onSave, snapshotForUndo, plannerId, isOwner }) {
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const [className, setClassName] = useState(data.appSettings.className)
   const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
@@ -25,6 +26,10 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
     return initial
   })
   const [sgSavedMsg, setSgSavedMsg] = useState(false)
+
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteStatus, setInviteStatus] = useState(null) // { type: 'success' | 'error', msg }
 
   function saveSgLabels() {
     onSave({
@@ -166,6 +171,24 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
     })
   }
 
+  async function inviteTeacher() {
+    const email = inviteEmail.trim()
+    if (!email) return
+    setInviteLoading(true)
+    setInviteStatus(null)
+    const { error } = await supabase.rpc('invite_member_by_email', {
+      p_planner_id: plannerId,
+      p_email: email,
+    })
+    setInviteLoading(false)
+    if (error) {
+      setInviteStatus({ type: 'error', msg: error.message })
+    } else {
+      setInviteStatus({ type: 'success', msg: `Invited ${email} — they now have full editing access to this planner.` })
+      setInviteEmail('')
+    }
+  }
+
   return (
     <div style={styles.wrap}>
       <div style={styles.section}>
@@ -200,6 +223,41 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
           {savedMsg && <span style={styles.savedMsg}>Saved ✓</span>}
         </div>
       </div>
+
+      {isOwner && (
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>Invite a teacher</div>
+          <div style={styles.sectionDesc}>
+            Give another teacher full editing access to this planner, instead of sharing your login.
+            They need to have already signed up with the email below — if not, ask them to sign up first, then invite them again.
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Teacher's email</label>
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="teacher@school.edu.au"
+              style={styles.input}
+              onKeyDown={(e) => { if (e.key === 'Enter') inviteTeacher() }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              style={{ ...styles.primaryBtn, opacity: inviteLoading || !inviteEmail.trim() ? 0.6 : 1 }}
+              onClick={inviteTeacher}
+              disabled={inviteLoading || !inviteEmail.trim()}
+            >
+              {inviteLoading ? 'Inviting…' : 'Invite teacher'}
+            </button>
+          </div>
+          {inviteStatus && (
+            <p style={inviteStatus.type === 'success' ? styles.savedMsg : styles.errorMsg}>
+              {inviteStatus.msg}
+            </p>
+          )}
+        </div>
+      )}
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Session behaviour</div>
@@ -311,6 +369,7 @@ const styles = {
   hint: { fontSize: 10, color: '#7A849E', marginTop: 4 },
   primaryBtn: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   savedMsg: { fontSize: 11, color: '#2EAF6E' },
+  errorMsg: { fontSize: 11, color: '#C0392B' },
   saveRow: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
   toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #D4D9E5' },
   toggleLabel: { fontSize: 12, fontWeight: 600 },
