@@ -124,7 +124,7 @@ export default function PlannerPage() {
         ) : view === 'settings' ? (
           <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} snapshotForUndo={snapshotForUndo} />
         ) : planSubjects[view] ? (
-          <TermView data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
+          <TermView key={view} data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
         ) : (
           <div style={{ padding: 30 }}>Unknown view.</div>
         )}
