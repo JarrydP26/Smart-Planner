@@ -18,7 +18,7 @@ export default function PlannerPage() {
   const [plannerError, setPlannerError] = useState('')
   const [view, setView] = useState('weekly') // 'weekly' | 'settings' | a subject key
 
-  const { data, loading: dataLoading, error: dataError, saving, save, saveNow } = usePlannerData(plannerId)
+  const { data, loading: dataLoading, error: dataError, saving, save, saveNow, conflictWarning } = usePlannerData(plannerId)
 
   useEffect(() => {
     async function load() {
@@ -71,6 +71,11 @@ export default function PlannerPage() {
           </>
         )}
 
+        <div style={styles.sectionLabel}>Timetable</div>
+        <button style={view === 'timetable' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('timetable')}>
+          🗓️ Edit Timetable
+        </button>
+
         <div style={styles.sectionLabel}>Settings</div>
         <button style={view === 'settings' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('settings')}>
           🔧 Settings
@@ -84,10 +89,16 @@ export default function PlannerPage() {
           <span style={styles.saveStatus}>{saving ? 'Saving…' : ''}</span>
         </div>
 
+        {conflictWarning && (
+          <div style={styles.conflictBanner}>⚠️ {conflictWarning}</div>
+        )}
+
         {isBlank ? (
           <TimetableSetup data={data} onSave={saveNow} />
         ) : view === 'weekly' ? (
           <WeeklyPlanner data={data} onSave={save} />
+        ) : view === 'timetable' ? (
+          <TimetableSetup data={data} onSave={saveNow} />
         ) : view === 'settings' ? (
           <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} />
         ) : planSubjects[view] ? (
@@ -114,5 +125,6 @@ const styles = {
   backBtn: { fontSize: 12, padding: '6px 12px', border: '1.5px solid #D4D9E5', borderRadius: 6, background: 'transparent', cursor: 'pointer' },
   plannerName: { fontSize: 14, fontWeight: 700 },
   saveStatus: { fontSize: 11, color: '#7A849E', marginLeft: 'auto' },
+  conflictBanner: { fontSize: 11, color: '#8A6D00', background: '#FFF6DB', border: '1px solid #F0DE9A', padding: '8px 16px', margin: '10px 24px 0' },
   center: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" },
 }
