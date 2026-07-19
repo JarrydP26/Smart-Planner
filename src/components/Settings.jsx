@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { DEFAULT_PLAN_SUBJECTS, SG_CELLS } from '../lib/timetableDefaults'
 import { withNewWeek, withNextWeek, withRelabeledTerm, getMonday } from '../lib/plannerHelpers'
+import { buildFullTermDocument, downloadWordDoc } from '../lib/wordExport'
 
 const TOGGLE_DEFINITIONS = [
   { key: 'mathsToSelf', label: 'Maths to Self — small groups', hint: 'On: editable small-group grid. Off: plain fixed box.' },
@@ -30,6 +31,65 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteStatus, setInviteStatus] = useState(null) // { type: 'success' | 'error', msg }
+
+  const [restoreStatus, setRestoreStatus] = useState(null) // { type: 'success' | 'error', msg }
+  const [exportingFullTerm, setExportingFullTerm] = useState(false)
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  function handleDownloadBackup() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const dateStamp = new Date().toISOString().slice(0, 10)
+    const namePart = (data.appSettings.className || 'planner').trim().replace(/\s+/g, '_')
+    downloadBlob(blob, `${namePart}_backup_${dateStamp}.json`)
+  }
+
+  function handleRestoreFile(e) {
+    const file = e.target.files[0]
+    e.target.value = '' // allow re-selecting the same file again later
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      let parsed
+      try {
+        parsed = JSON.parse(ev.target.result)
+      } catch {
+        setRestoreStatus({ type: 'error', msg: "That file couldn't be read — is it a valid .json backup?" })
+        return
+      }
+      if (!parsed || !Array.isArray(parsed.weeks) || !parsed.appSettings) {
+        setRestoreStatus({ type: 'error', msg: "That file doesn't look like a valid planner backup." })
+        return
+      }
+      if (!window.confirm(
+        'This will REPLACE all current planning data in this planner with the contents of this backup file. This cannot be undone. Continue?'
+      )) return
+      onSave(parsed)
+      setRestoreStatus({ type: 'success', msg: 'Backup restored ✓' })
+    }
+    reader.onerror = () => setRestoreStatus({ type: 'error', msg: "Couldn't read that file." })
+    reader.readAsText(file)
+  }
+
+  async function handleExportFullTerm() {
+    setExportingFullTerm(true)
+    try {
+      const doc = buildFullTermDocument(data)
+      const namePart = (data.appSettings.className || 'planner').trim().replace(/\s+/g, '_')
+      await downloadWordDoc(doc, `${namePart}_Full_Term_Plan.docx`)
+    } finally {
+      setExportingFullTerm(false)
+    }
+  }
 
   function saveSgLabels() {
     onSave({
@@ -371,6 +431,32 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
       </div>
 
       <div style={styles.section}>
+        <div style={styles.sectionTitle}>Backup, restore & export</div>
+        <div style={styles.sectionDesc}>Download a full backup, export a printable Word document of the whole term, or restore from a previous backup.</div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          <button style={styles.outlineBtn} onClick={handleDownloadBackup}>💾 Download backup (.json)</button>
+          <button style={styles.outlineBtn} onClick={handleExportFullTerm} disabled={exportingFullTerm}>
+            {exportingFullTerm ? 'Exporting…' : '📄 Export full term (.docx)'}
+          </button>
+        </div>
+
+        {isOwner ? (
+          <div style={styles.field}>
+            <label style={styles.label}>Restore from backup</label>
+            <input type="file" accept="application/json" onChange={handleRestoreFile} style={{ fontSize: 12 }} />
+            <p style={styles.hint}>Replaces ALL current planning data in this planner with the backup file's contents. This cannot be undone — download a fresh backup first if you're unsure.</p>
+          </div>
+        ) : (
+          <p style={styles.hint}>Only the planner owner can restore from a backup (since it replaces everyone's current data).</p>
+        )}
+
+        {restoreStatus && (
+          <p style={restoreStatus.type === 'success' ? styles.savedMsg : styles.errorMsg}>{restoreStatus.msg}</p>
+        )}
+      </div>
+
+      <div style={styles.section}>
         <div style={styles.sectionTitle}>Small group grid labels</div>
         <div style={styles.sectionDesc}>Rename the six group cells used in the Maths to Self / Read to Self grids to match your actual class groupings.</div>
         <div style={styles.groupList}>
@@ -405,6 +491,7 @@ const styles = {
   input: { width: '100%', maxWidth: 280, padding: '8px 11px', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
   hint: { fontSize: 10, color: '#7A849E', marginTop: 4 },
   primaryBtn: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  outlineBtn: { padding: '9px 16px', background: '#fff', color: '#1C2333', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   savedMsg: { fontSize: 11, color: '#2EAF6E' },
   errorMsg: { fontSize: 11, color: '#C0392B' },
   saveRow: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },

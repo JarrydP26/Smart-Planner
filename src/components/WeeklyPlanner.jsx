@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS, SUBJECT_DOT_COLOR, DEFAULT_SPECIALIST_BLOCKS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans, getResolvedSgCells } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans, getResolvedSgCells, bumpSubjectForward, bumpWouldLoseContent } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
@@ -116,6 +116,20 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
   }
 
+  // Bumps this session forward: everything scheduled after it for this
+  // subject (and this ability group, if enabled) shifts one slot later,
+  // across the whole term — not just the active week.
+  function handleBumpSession(subj, day) {
+    const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
+    if (bumpWouldLoseContent(data, subj, groupId)) {
+      if (!window.confirm(
+        "This will push every later session for this subject forward by one. The last scheduled session this term has no free slot after it, so it will be removed. Continue?"
+      )) return
+    }
+    snapshotForUndo?.('bump session')
+    onSave(bumpSubjectForward(data, subj, activeWeek.id, day, groupId))
+  }
+
   function handleSaveNotes(notesKey, value) {
     const newWeek = { ...activeWeek, notes: { ...activeWeek.notes, [notesKey]: value } }
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
@@ -188,6 +202,7 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
                   onAdd={openAdd}
                   onEdit={openEdit}
                   onDelete={quickDelete}
+                  onBump={handleBumpSession}
                   onSaveNotes={handleSaveNotes}
                   onOpenSgModal={openSgModal}
                 />
@@ -309,7 +324,7 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
   )
 }
 
-function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
+function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onBump, onSaveNotes, onOpenSgModal }) {
   const cells = []
 
   for (const day of DAYS) {
@@ -430,10 +445,17 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
               {session.resources && (
                 <div style={styles.cardResource}>🔗 {linkify(session.resources)}</div>
               )}
-              <button
-                style={styles.deleteBtn}
-                onClick={(e) => { e.stopPropagation(); onDelete(subj, day) }}
-              >🗑</button>
+              <div style={styles.cardActions}>
+                <button
+                  style={styles.bumpBtn}
+                  title="Push this and every later session for this subject forward by one"
+                  onClick={(e) => { e.stopPropagation(); onBump(subj, day) }}
+                >⏩</button>
+                <button
+                  style={styles.deleteBtn}
+                  onClick={(e) => { e.stopPropagation(); onDelete(subj, day) }}
+                >🗑</button>
+              </div>
             </div>
           ) : (
             <div style={styles.emptyCell} onClick={() => onAdd(subj, day)}>+</div>
@@ -466,7 +488,6 @@ const styles = {
   tabAdd: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px dashed #D4D9E5', background: 'none', fontSize: 14, color: '#7A849E', cursor: 'pointer' },
   printBtn: { marginLeft: 'auto', padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   blockOutBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #E8B0B0', background: '#FFF0F0', color: '#C0392B', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
-  printBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   tableWrap: { padding: '16px 20px', overflowX: 'auto' },
   table: { minWidth: 820, width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 8, overflow: 'hidden' },
   th: { padding: '9px 10px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E', background: '#F0F2F7', borderBottom: '2px solid #D4D9E5', textAlign: 'center' },
@@ -479,12 +500,14 @@ const styles = {
   td: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 120 },
   fixedCard: { borderRadius: 6, padding: '6px 8px', fontSize: 11, fontWeight: 700, textAlign: 'center', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F0F2F7' },
   planCard: { borderRadius: 6, padding: '7px 9px', minHeight: 56, cursor: 'pointer', position: 'relative', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4', background: '#FAFBFD' },
-  cardTitle: { fontSize: 12, fontWeight: 700, marginBottom: 3, color: '#2870D4' },
+  cardTitle: { fontSize: 12, fontWeight: 700, marginBottom: 3, color: '#2870D4', paddingRight: 42 },
   cardPreview: { fontSize: 10, color: '#7A849E', whiteSpace: 'pre-line' },
   cardLi: { fontSize: 9.5, color: '#3A6EA5', fontStyle: 'italic', marginBottom: 3 },
   cardResource: { fontSize: 9, marginTop: 3 },
   emptyCell: { borderRadius: 6, minHeight: 56, border: '1.5px dashed #D4D9E5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7A849E', fontSize: 18, cursor: 'pointer' },
-  deleteBtn: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer', display: 'none' },
+  cardActions: { position: 'absolute', top: 4, right: 4, display: 'flex', gap: 3 },
+  bumpBtn: { width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer' },
+  deleteBtn: { width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.85)', fontSize: 10, cursor: 'pointer' },
   notesCard: { padding: '10px 8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' },
   notesLabel: { fontSize: 12, fontWeight: 800, marginBottom: 4 },
   notesSubLabel: { fontSize: 8, fontWeight: 700, letterSpacing: 0.6, color: '#5A6478', marginBottom: 6 },
