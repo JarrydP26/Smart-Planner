@@ -59,8 +59,15 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
   }
 
   function saveDetails() {
-    const newTermWeeks = Math.max(1, Math.min(15, parseInt(termWeeks) || data.appSettings.termWeeks))
-    const newTerm = Math.max(1, Math.min(4, parseInt(currentTerm) || data.appSettings.currentTerm || 1))
+    // Term and term-length are owner-only — if a non-owner somehow triggers
+    // this (shouldn't be possible via the disabled UI below), fall back to
+    // the existing saved values rather than trusting local state.
+    const newTermWeeks = isOwner
+      ? Math.max(1, Math.min(15, parseInt(termWeeks) || data.appSettings.termWeeks))
+      : data.appSettings.termWeeks
+    const newTerm = isOwner
+      ? Math.max(1, Math.min(4, parseInt(currentTerm) || data.appSettings.currentTerm || 1))
+      : (data.appSettings.currentTerm || 1)
     const weeksChanged = newTermWeeks !== data.appSettings.termWeeks
     const termChanged = newTerm !== (data.appSettings.currentTerm || 1)
 
@@ -205,18 +212,39 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
         </div>
         <div style={styles.field}>
           <label style={styles.label}>Term</label>
-          <select value={currentTerm} onChange={(e) => setCurrentTerm(e.target.value)} style={{ ...styles.input, maxWidth: 100 }}>
+          <select
+            value={currentTerm}
+            onChange={(e) => setCurrentTerm(e.target.value)}
+            disabled={!isOwner}
+            style={{ ...styles.input, maxWidth: 100, opacity: isOwner ? 1 : 0.6 }}
+          >
             <option value={1}>Term 1</option>
             <option value={2}>Term 2</option>
             <option value={3}>Term 3</option>
             <option value={4}>Term 4</option>
           </select>
-          <p style={styles.hint}>Updates the term number on all week labels (e.g. "Term 2 Week 1").</p>
+          <p style={styles.hint}>
+            {isOwner
+              ? 'Updates the term number on all week labels (e.g. "Term 2 Week 1").'
+              : 'Only the planner owner can change the term.'}
+          </p>
         </div>
         <div style={styles.field}>
           <label style={styles.label}>Term length (weeks)</label>
-          <input type="number" min={1} max={15} value={termWeeks} onChange={(e) => setTermWeeks(e.target.value)} style={{ ...styles.input, maxWidth: 100 }} />
-          <p style={styles.hint}>Changing this adds or removes week tabs. You'll be asked to confirm if it would delete planned weeks.</p>
+          <input
+            type="number"
+            min={1}
+            max={15}
+            value={termWeeks}
+            onChange={(e) => setTermWeeks(e.target.value)}
+            disabled={!isOwner}
+            style={{ ...styles.input, maxWidth: 100, opacity: isOwner ? 1 : 0.6 }}
+          />
+          <p style={styles.hint}>
+            {isOwner
+              ? "Changing this adds or removes week tabs. You'll be asked to confirm if it would delete planned weeks."
+              : 'Only the planner owner can change term length.'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button style={styles.primaryBtn} onClick={saveDetails}>Save details</button>
@@ -290,7 +318,10 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
       </div>
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Ability groups</div>
-        <div style={styles.sectionDesc}>Useful if multiple teachers plan the same subject for different ability groups sharing this planner (e.g. 3 maths groups).</div>
+        <div style={styles.sectionDesc}>
+          Useful if multiple teachers plan the same subject for different ability groups sharing this planner (e.g. 3 maths groups).
+          {!isOwner && ' Only the planner owner can change these.'}
+        </div>
         {Object.entries(planSubjects).map(([subj, meta]) => {
           const cfg = data.appSettings.abilityGroups?.[subj] || { enabled: false, groups: [] }
           return (
@@ -300,14 +331,15 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
                   <div style={styles.toggleLabel}>{meta.label}</div>
                   <div style={styles.toggleHint}>{cfg.enabled ? `${cfg.groups.length} group${cfg.groups.length === 1 ? '' : 's'}` : 'Off — one shared plan for everyone'}</div>
                 </div>
-                <label style={styles.switch}>
+                <label style={{ ...styles.switch, cursor: isOwner ? 'pointer' : 'not-allowed' }}>
                   <input
                     type="checkbox"
                     checked={!!cfg.enabled}
-                    onChange={(e) => toggleAbilityGroups(subj, e.target.checked)}
+                    disabled={!isOwner}
+                    onChange={(e) => isOwner && toggleAbilityGroups(subj, e.target.checked)}
                     style={{ opacity: 0, width: 0, height: 0 }}
                   />
-                  <span style={{ ...styles.slider, background: cfg.enabled ? '#3A86D4' : '#D4D9E5' }}>
+                  <span style={{ ...styles.slider, background: cfg.enabled ? '#3A86D4' : '#D4D9E5', opacity: isOwner ? 1 : 0.6 }}>
                     <span style={{ ...styles.sliderKnob, transform: cfg.enabled ? 'translateX(18px)' : 'translateX(0)' }} />
                   </span>
                 </label>
@@ -319,13 +351,18 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
                       <input
                         type="text"
                         defaultValue={g.name}
-                        onBlur={(e) => renameAbilityGroup(subj, g.id, e.target.value)}
-                        style={styles.groupChipInput}
+                        disabled={!isOwner}
+                        onBlur={(e) => isOwner && renameAbilityGroup(subj, g.id, e.target.value)}
+                        style={{ ...styles.groupChipInput, opacity: isOwner ? 1 : 0.6 }}
                       />
-                      <button style={styles.groupChipDelete} title="Delete group" onClick={() => deleteAbilityGroup(subj, g.id)}>✕</button>
+                      {isOwner && (
+                        <button style={styles.groupChipDelete} title="Delete group" onClick={() => deleteAbilityGroup(subj, g.id)}>✕</button>
+                      )}
                     </div>
                   ))}
-                  <button style={styles.addGroupBtn} onClick={() => addAbilityGroup(subj)}>+ Add group</button>
+                  {isOwner && (
+                    <button style={styles.addGroupBtn} onClick={() => addAbilityGroup(subj)}>+ Add group</button>
+                  )}
                 </div>
               )}
             </div>
