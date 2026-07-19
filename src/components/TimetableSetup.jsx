@@ -30,13 +30,16 @@ function withInitialTermWeeks(data, planSubjects) {
   return result
 }
 
-export default function TimetableSetup({ data, onSave, onDone }) {
+export default function TimetableSetup({ data, onSave, onDone, snapshotForUndo }) {
   const [draftRows, setDraftRows] = useState(null) // null = showing the initial choice screen
   const [specialistDraft, setSpecialistDraft] = useState(null)
   const [busy, setBusy] = useState(false)
 
   async function useDefaultTimetable() {
     setBusy(true)
+    // Only worth snapshotting if this planner already has real content —
+    // resetting a genuinely blank planner to defaults has nothing to undo.
+    if (data.weeks.length > 0) snapshotForUndo?.('reset to default timetable')
     const withTimetable = { ...data, rows: null, planSubjects: null, specialistBlocks: null }
     const finalData = data.weeks.length === 0
       ? withInitialTermWeeks(withTimetable, DEFAULT_PLAN_SUBJECTS)
@@ -190,6 +193,11 @@ export default function TimetableSetup({ data, onSave, onDone }) {
     if (finalData.weeks.length === 0) {
       finalData = withInitialTermWeeks(finalData, newPlanSubjects)
     }
+
+    // This can meaningfully reshape existing session data (new subject
+    // keys, dropped days, etc.) — worth a snapshot before committing,
+    // same as any other structural change elsewhere in the app.
+    if (data.weeks.length > 0) snapshotForUndo?.('edit timetable')
 
     await onSave(finalData)
     setDraftRows(null)
