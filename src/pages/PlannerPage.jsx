@@ -151,8 +151,17 @@ export default function PlannerPage() {
 // Hiding is layered three ways (display/visibility/position) as a defensive
 // measure in case any single approach gets overridden somewhere.
 const PRINT_CSS = `
+.print-only { display: none; }
+
 @media print {
   @page { size: A3 landscape; margin: 8mm; }
+
+  .print-only {
+    display: block !important;
+    font-size: 16pt;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
 
   .no-print {
     display: none !important;
