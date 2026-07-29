@@ -8,6 +8,7 @@ import TimetableSetup from '../components/TimetableSetup'
 import WeeklyPlanner from '../components/WeeklyPlanner'
 import TermView from '../components/TermView'
 import Settings from '../components/Settings'
+import SearchPanel from '../components/SearchPanel'
 
 export default function PlannerPage() {
   const { plannerId } = useParams()
@@ -63,7 +64,8 @@ export default function PlannerPage() {
 
   return (
     <div style={styles.page}>
-      <nav style={styles.sidebar}>
+      <style>{PRINT_CSS}</style>
+      <nav className="no-print" style={styles.sidebar}>
         <div style={styles.sidebarTitle}>
           📋 {data.appSettings.className} Planner
           <div style={styles.sidebarSubtitle}>{data.appSettings.schoolName}</div>
@@ -72,6 +74,12 @@ export default function PlannerPage() {
         <button style={view === 'weekly' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('weekly')}>
           🗓️ Weekly Planner
         </button>
+
+        {!isBlank && (
+          <button style={view === 'search' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('search')}>
+            🔍 Search
+          </button>
+        )}
 
         {!isBlank && (
           <>
@@ -100,7 +108,7 @@ export default function PlannerPage() {
       </nav>
 
       <div style={styles.main}>
-        <div style={styles.topBar}>
+        <div className="no-print" style={styles.topBar}>
           <button style={styles.backBtn} onClick={() => navigate('/')}>← All planners</button>
           <span style={styles.plannerName}>{planner.name}</span>
           {undoStack.length > 0 && (
@@ -112,26 +120,83 @@ export default function PlannerPage() {
         </div>
 
         {conflictWarning && (
-          <div style={styles.conflictBanner}>⚠️ {conflictWarning}</div>
+          <div className="no-print" style={styles.conflictBanner}>⚠️ {conflictWarning}</div>
         )}
 
-        {isBlank ? (
-          <TimetableSetup data={data} onSave={saveNow} snapshotForUndo={snapshotForUndo} />
-        ) : view === 'weekly' ? (
-          <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
-        ) : view === 'timetable' ? (
-          <TimetableSetup data={data} onSave={saveNow} onDone={() => setView('weekly')} snapshotForUndo={snapshotForUndo} />
-        ) : view === 'settings' ? (
-          <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} snapshotForUndo={snapshotForUndo} />
-        ) : planSubjects[view] ? (
-          <TermView key={view} data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
-        ) : (
-          <div style={{ padding: 30 }}>Unknown view.</div>
-        )}
+        <div className="print-area">
+          {isBlank ? (
+            <TimetableSetup data={data} onSave={saveNow} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'weekly' ? (
+            <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'search' ? (
+            <SearchPanel data={data} onNavigate={(subj) => setView(subj)} />
+          ) : view === 'timetable' ? (
+            <TimetableSetup data={data} onSave={saveNow} onDone={() => setView('weekly')} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'settings' ? (
+            <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} snapshotForUndo={snapshotForUndo} />
+          ) : planSubjects[view] ? (
+            <TermView key={view} data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
+          ) : (
+            <div style={{ padding: 30 }}>Unknown view.</div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
+// Print CSS — since the app uses inline styles rather than a stylesheet, the
+// sidebar/topbar/buttons carry a "no-print" className specifically so this
+// stylesheet can hide them; only .print-area's content shows when printing.
+// Hiding is layered three ways (display/visibility/position) as a defensive
+// measure in case any single approach gets overridden somewhere.
+const PRINT_CSS = `
+@media print {
+  @page { size: A3 landscape; margin: 8mm; }
+
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  html, body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #root, .print-area {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  table {
+    box-shadow: none !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  tr, td, th {
+    page-break-inside: avoid;
+  }
+
+  button {
+    cursor: default;
+  }
+}
+`
 
 const styles = {
   page: { minHeight: '100vh', background: '#F0F2F7', fontFamily: "'Segoe UI', system-ui, sans-serif", display: 'flex' },
