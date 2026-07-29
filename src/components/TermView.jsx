@@ -326,7 +326,7 @@ function AllGroupsTable({ data, subj, subjMeta, days, groupCfg, onEdit, onAdd })
 }
 
 const styles = {
-  wrap: { padding: '16px 20px', maxWidth: 1100 },
+  wrap: { padding: '16px 20px' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 },
   title: { fontSize: 18, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: '50%', display: 'inline-block' },
@@ -340,14 +340,14 @@ const styles = {
   exportBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   summaryBox: { width: '100%', minHeight: 64, padding: '10px 12px', border: '1.5px solid #D4D9E5', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', marginBottom: 14, boxSizing: 'border-box' },
   tableWrap: { overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.07)', border: '1.5px solid #D4D9E5' },
+  table: { width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', background: '#fff', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.07)', border: '1.5px solid #D4D9E5' },
   th: { padding: '9px 12px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E', background: '#F0F2F7', borderBottom: '2px solid #D4D9E5', textAlign: 'center' },
   thWeek: { padding: '9px 12px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E', background: '#F0F2F7', borderBottom: '2px solid #D4D9E5', textAlign: 'left', width: 170 },
-  weekLabel: { padding: '8px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', borderRight: '2px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', background: '#F8F9FB', verticalAlign: 'top', position: 'relative' },
+  weekLabel: { padding: '8px 30px 8px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderRight: '2px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', background: '#F8F9FB', verticalAlign: 'top', position: 'relative' },
   weekDates: { display: 'block', fontSize: 10, fontWeight: 400, color: '#7A849E', marginTop: 1 },
   deleteWeekBtn: { position: 'absolute', top: 6, right: 6, width: 20, height: 20, border: 'none', borderRadius: 4, background: '#FFE8E8', color: '#C0392B', fontSize: 10, cursor: 'pointer' },
   topicInput: { marginTop: 4, display: 'block', width: '100%', border: '1px solid #D4D9E5', borderRadius: 4, fontSize: 11, fontStyle: 'italic', color: '#3A86D4', padding: '2px 4px', fontFamily: 'inherit', boxSizing: 'border-box' },
-  cell: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 150 },
+  cell: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', overflowWrap: 'break-word' },
   sessionCard: { padding: '8px 10px', minHeight: 64, cursor: 'pointer', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4' },
   cardTitle: { fontSize: 11.5, fontWeight: 700, marginBottom: 3, paddingRight: 20 },
   cardPreview: { fontSize: 10, color: '#7A849E', whiteSpace: 'pre-line' },
