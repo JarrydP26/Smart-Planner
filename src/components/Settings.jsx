@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
 import { DEFAULT_PLAN_SUBJECTS, SG_CELLS } from '../lib/timetableDefaults'
-import { withNewWeek, withNextWeek, withRelabeledTerm, withRecalculatedDates, getMonday } from '../lib/plannerHelpers'
+import { withNewWeek, withNextWeek, withRelabeledTerm, getMonday } from '../lib/plannerHelpers'
+import { buildFullTermDocument, downloadWordDoc } from '../lib/wordExport'
 
 const TOGGLE_DEFINITIONS = [
   { key: 'mathsToSelf', label: 'Maths to Self — small groups', hint: 'On: editable small-group grid. Off: plain fixed box.' },
@@ -11,17 +13,12 @@ const TOGGLE_DEFINITIONS = [
   { key: 'brainBreak', label: 'Brain Break — topic field', hint: 'On: simple editable topic text. Off: plain fixed name box.' },
 ]
 
-export default function Settings({ data, onSave, snapshotForUndo }) {
+export default function Settings({ data, onSave, snapshotForUndo, plannerId, isOwner }) {
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
   const [className, setClassName] = useState(data.appSettings.className)
   const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
   const [termWeeks, setTermWeeks] = useState(data.appSettings.termWeeks)
   const [currentTerm, setCurrentTerm] = useState(data.appSettings.currentTerm || 1)
-  const [termStartDate, setTermStartDate] = useState(() => {
-    const firstWeek = data.weeks?.[0]
-    return firstWeek?.dateStart ? firstWeek.dateStart.slice(0, 10) : ''
-  })
-  const [datesSavedMsg, setDatesSavedMsg] = useState(false)
   const [savedMsg, setSavedMsg] = useState(false)
   const [sgLabels, setSgLabels] = useState(() => {
     const overrides = data.appSettings.sgCellLabels || {}
@@ -31,6 +28,69 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
   })
   const [sgSavedMsg, setSgSavedMsg] = useState(false)
 
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteStatus, setInviteStatus] = useState(null) // { type: 'success' | 'error', msg }
+
+  const [restoreStatus, setRestoreStatus] = useState(null) // { type: 'success' | 'error', msg }
+  const [exportingFullTerm, setExportingFullTerm] = useState(false)
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  function handleDownloadBackup() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const dateStamp = new Date().toISOString().slice(0, 10)
+    const namePart = (data.appSettings.className || 'planner').trim().replace(/\s+/g, '_')
+    downloadBlob(blob, `${namePart}_backup_${dateStamp}.json`)
+  }
+
+  function handleRestoreFile(e) {
+    const file = e.target.files[0]
+    e.target.value = '' // allow re-selecting the same file again later
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      let parsed
+      try {
+        parsed = JSON.parse(ev.target.result)
+      } catch {
+        setRestoreStatus({ type: 'error', msg: "That file couldn't be read — is it a valid .json backup?" })
+        return
+      }
+      if (!parsed || !Array.isArray(parsed.weeks) || !parsed.appSettings) {
+        setRestoreStatus({ type: 'error', msg: "That file doesn't look like a valid planner backup." })
+        return
+      }
+      if (!window.confirm(
+        'This will REPLACE all current planning data in this planner with the contents of this backup file. This cannot be undone. Continue?'
+      )) return
+      onSave(parsed)
+      setRestoreStatus({ type: 'success', msg: 'Backup restored ✓' })
+    }
+    reader.onerror = () => setRestoreStatus({ type: 'error', msg: "Couldn't read that file." })
+    reader.readAsText(file)
+  }
+
+  async function handleExportFullTerm() {
+    setExportingFullTerm(true)
+    try {
+      const doc = buildFullTermDocument(data)
+      const namePart = (data.appSettings.className || 'planner').trim().replace(/\s+/g, '_')
+      await downloadWordDoc(doc, `${namePart}_Full_Term_Plan.docx`)
+    } finally {
+      setExportingFullTerm(false)
+    }
+  }
+
   function saveSgLabels() {
     onSave({
       ...data,
@@ -38,15 +98,6 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
     })
     setSgSavedMsg(true)
     setTimeout(() => setSgSavedMsg(false), 2000)
-  }
-
-  function recalculateDates() {
-    if (!termStartDate) { window.alert('Pick the actual first day of term first.'); return }
-    if (!window.confirm(`Recalculate every week's date range starting from ${termStartDate}? Week numbers, labels, and all planned content stay exactly the same — only the date ranges shown (e.g. "28 Jul – 1 Aug") get corrected.`)) return
-    snapshotForUndo?.('recalculate week dates')
-    onSave(withRecalculatedDates(data, termStartDate))
-    setDatesSavedMsg(true)
-    setTimeout(() => setDatesSavedMsg(false), 2000)
   }
 
   function adjustWeekCount(target) {
@@ -68,8 +119,15 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
   }
 
   function saveDetails() {
-    const newTermWeeks = Math.max(1, Math.min(15, parseInt(termWeeks) || data.appSettings.termWeeks))
-    const newTerm = Math.max(1, Math.min(4, parseInt(currentTerm) || data.appSettings.currentTerm || 1))
+    // Term and term-length are owner-only — if a non-owner somehow triggers
+    // this (shouldn't be possible via the disabled UI below), fall back to
+    // the existing saved values rather than trusting local state.
+    const newTermWeeks = isOwner
+      ? Math.max(1, Math.min(15, parseInt(termWeeks) || data.appSettings.termWeeks))
+      : data.appSettings.termWeeks
+    const newTerm = isOwner
+      ? Math.max(1, Math.min(4, parseInt(currentTerm) || data.appSettings.currentTerm || 1))
+      : (data.appSettings.currentTerm || 1)
     const weeksChanged = newTermWeeks !== data.appSettings.termWeeks
     const termChanged = newTerm !== (data.appSettings.currentTerm || 1)
 
@@ -180,6 +238,24 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
     })
   }
 
+  async function inviteTeacher() {
+    const email = inviteEmail.trim()
+    if (!email) return
+    setInviteLoading(true)
+    setInviteStatus(null)
+    const { error } = await supabase.rpc('invite_member_by_email', {
+      p_planner_id: plannerId,
+      p_email: email,
+    })
+    setInviteLoading(false)
+    if (error) {
+      setInviteStatus({ type: 'error', msg: error.message })
+    } else {
+      setInviteStatus({ type: 'success', msg: `Invited ${email} — they now have full editing access to this planner.` })
+      setInviteEmail('')
+    }
+  }
+
   return (
     <div style={styles.wrap}>
       <div style={styles.section}>
@@ -196,18 +272,39 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
         </div>
         <div style={styles.field}>
           <label style={styles.label}>Term</label>
-          <select value={currentTerm} onChange={(e) => setCurrentTerm(e.target.value)} style={{ ...styles.input, maxWidth: 100 }}>
+          <select
+            value={currentTerm}
+            onChange={(e) => setCurrentTerm(e.target.value)}
+            disabled={!isOwner}
+            style={{ ...styles.input, maxWidth: 100, opacity: isOwner ? 1 : 0.6 }}
+          >
             <option value={1}>Term 1</option>
             <option value={2}>Term 2</option>
             <option value={3}>Term 3</option>
             <option value={4}>Term 4</option>
           </select>
-          <p style={styles.hint}>Updates the term number on all week labels (e.g. "Term 2 Week 1").</p>
+          <p style={styles.hint}>
+            {isOwner
+              ? 'Updates the term number on all week labels (e.g. "Term 2 Week 1").'
+              : 'Only the planner owner can change the term.'}
+          </p>
         </div>
         <div style={styles.field}>
           <label style={styles.label}>Term length (weeks)</label>
-          <input type="number" min={1} max={15} value={termWeeks} onChange={(e) => setTermWeeks(e.target.value)} style={{ ...styles.input, maxWidth: 100 }} />
-          <p style={styles.hint}>Changing this adds or removes week tabs. You'll be asked to confirm if it would delete planned weeks.</p>
+          <input
+            type="number"
+            min={1}
+            max={15}
+            value={termWeeks}
+            onChange={(e) => setTermWeeks(e.target.value)}
+            disabled={!isOwner}
+            style={{ ...styles.input, maxWidth: 100, opacity: isOwner ? 1 : 0.6 }}
+          />
+          <p style={styles.hint}>
+            {isOwner
+              ? "Changing this adds or removes week tabs. You'll be asked to confirm if it would delete planned weeks."
+              : 'Only the planner owner can change term length.'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button style={styles.primaryBtn} onClick={saveDetails}>Save details</button>
@@ -215,25 +312,40 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
         </div>
       </div>
 
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>Term start date</div>
-        <div style={styles.sectionDesc}>
-          If the week dates shown look wrong (e.g. because the planner was set up partway through term rather than on day one), fix them here — this only corrects the date ranges shown; week numbers and everything you've planned stay exactly as they are.
+      {isOwner && (
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>Invite a teacher</div>
+          <div style={styles.sectionDesc}>
+            Give another teacher full editing access to this planner, instead of sharing your login.
+            They need to have already signed up with the email below — if not, ask them to sign up first, then invite them again.
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Teacher's email</label>
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="teacher@school.edu.au"
+              style={styles.input}
+              onKeyDown={(e) => { if (e.key === 'Enter') inviteTeacher() }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              style={{ ...styles.primaryBtn, opacity: inviteLoading || !inviteEmail.trim() ? 0.6 : 1 }}
+              onClick={inviteTeacher}
+              disabled={inviteLoading || !inviteEmail.trim()}
+            >
+              {inviteLoading ? 'Inviting…' : 'Invite teacher'}
+            </button>
+          </div>
+          {inviteStatus && (
+            <p style={inviteStatus.type === 'success' ? styles.savedMsg : styles.errorMsg}>
+              {inviteStatus.msg}
+            </p>
+          )}
         </div>
-        <div style={styles.field}>
-          <label style={styles.label}>Actual first day of Week 1</label>
-          <input
-            type="date"
-            value={termStartDate}
-            onChange={(e) => setTermStartDate(e.target.value)}
-            style={{ ...styles.input, maxWidth: 180 }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button style={styles.primaryBtn} onClick={recalculateDates}>Recalculate week dates</button>
-          {datesSavedMsg && <span style={styles.savedMsg}>Saved ✓</span>}
-        </div>
-      </div>
+      )}
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Session behaviour</div>
@@ -266,7 +378,10 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
       </div>
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Ability groups</div>
-        <div style={styles.sectionDesc}>Useful if multiple teachers plan the same subject for different ability groups sharing this planner (e.g. 3 maths groups).</div>
+        <div style={styles.sectionDesc}>
+          Useful if multiple teachers plan the same subject for different ability groups sharing this planner (e.g. 3 maths groups).
+          {!isOwner && ' Only the planner owner can change these.'}
+        </div>
         {Object.entries(planSubjects).map(([subj, meta]) => {
           const cfg = data.appSettings.abilityGroups?.[subj] || { enabled: false, groups: [] }
           return (
@@ -276,14 +391,15 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
                   <div style={styles.toggleLabel}>{meta.label}</div>
                   <div style={styles.toggleHint}>{cfg.enabled ? `${cfg.groups.length} group${cfg.groups.length === 1 ? '' : 's'}` : 'Off — one shared plan for everyone'}</div>
                 </div>
-                <label style={styles.switch}>
+                <label style={{ ...styles.switch, cursor: isOwner ? 'pointer' : 'not-allowed' }}>
                   <input
                     type="checkbox"
                     checked={!!cfg.enabled}
-                    onChange={(e) => toggleAbilityGroups(subj, e.target.checked)}
+                    disabled={!isOwner}
+                    onChange={(e) => isOwner && toggleAbilityGroups(subj, e.target.checked)}
                     style={{ opacity: 0, width: 0, height: 0 }}
                   />
-                  <span style={{ ...styles.slider, background: cfg.enabled ? '#3A86D4' : '#D4D9E5' }}>
+                  <span style={{ ...styles.slider, background: cfg.enabled ? '#3A86D4' : '#D4D9E5', opacity: isOwner ? 1 : 0.6 }}>
                     <span style={{ ...styles.sliderKnob, transform: cfg.enabled ? 'translateX(18px)' : 'translateX(0)' }} />
                   </span>
                 </label>
@@ -295,18 +411,49 @@ export default function Settings({ data, onSave, snapshotForUndo }) {
                       <input
                         type="text"
                         defaultValue={g.name}
-                        onBlur={(e) => renameAbilityGroup(subj, g.id, e.target.value)}
-                        style={styles.groupChipInput}
+                        disabled={!isOwner}
+                        onBlur={(e) => isOwner && renameAbilityGroup(subj, g.id, e.target.value)}
+                        style={{ ...styles.groupChipInput, opacity: isOwner ? 1 : 0.6 }}
                       />
-                      <button style={styles.groupChipDelete} title="Delete group" onClick={() => deleteAbilityGroup(subj, g.id)}>✕</button>
+                      {isOwner && (
+                        <button style={styles.groupChipDelete} title="Delete group" onClick={() => deleteAbilityGroup(subj, g.id)}>✕</button>
+                      )}
                     </div>
                   ))}
-                  <button style={styles.addGroupBtn} onClick={() => addAbilityGroup(subj)}>+ Add group</button>
+                  {isOwner && (
+                    <button style={styles.addGroupBtn} onClick={() => addAbilityGroup(subj)}>+ Add group</button>
+                  )}
                 </div>
               )}
             </div>
           )
         })}
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Backup, restore & export</div>
+        <div style={styles.sectionDesc}>Download a full backup, export a printable Word document of the whole term, or restore from a previous backup.</div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          <button style={styles.outlineBtn} onClick={handleDownloadBackup}>💾 Download backup (.json)</button>
+          <button style={styles.outlineBtn} onClick={handleExportFullTerm} disabled={exportingFullTerm}>
+            {exportingFullTerm ? 'Exporting…' : '📄 Export full term (.docx)'}
+          </button>
+        </div>
+
+        {isOwner ? (
+          <div style={styles.field}>
+            <label style={styles.label}>Restore from backup</label>
+            <input type="file" accept="application/json" onChange={handleRestoreFile} style={{ fontSize: 12 }} />
+            <p style={styles.hint}>Replaces ALL current planning data in this planner with the backup file's contents. This cannot be undone — download a fresh backup first if you're unsure.</p>
+          </div>
+        ) : (
+          <p style={styles.hint}>Only the planner owner can restore from a backup (since it replaces everyone's current data).</p>
+        )}
+
+        {restoreStatus && (
+          <p style={restoreStatus.type === 'success' ? styles.savedMsg : styles.errorMsg}>{restoreStatus.msg}</p>
+        )}
       </div>
 
       <div style={styles.section}>
@@ -344,7 +491,9 @@ const styles = {
   input: { width: '100%', maxWidth: 280, padding: '8px 11px', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
   hint: { fontSize: 10, color: '#7A849E', marginTop: 4 },
   primaryBtn: { padding: '9px 16px', background: '#3A86D4', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  outlineBtn: { padding: '9px 16px', background: '#fff', color: '#1C2333', border: '1.5px solid #D4D9E5', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   savedMsg: { fontSize: 11, color: '#2EAF6E' },
+  errorMsg: { fontSize: 11, color: '#C0392B' },
   saveRow: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
   toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #D4D9E5' },
   toggleLabel: { fontSize: 12, fontWeight: 600 },

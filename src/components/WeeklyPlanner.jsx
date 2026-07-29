@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { DAYS, DEFAULT_ROWS, DEFAULT_PLAN_SUBJECTS, SG_SLOTS, SG_CELLS, SUBJECT_DOT_COLOR, DEFAULT_SPECIALIST_BLOCKS } from '../lib/timetableDefaults'
-import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans, getResolvedSgCells } from '../lib/plannerHelpers'
+import { getSessionFor, withSessionSet, withWeekUpdated, withNewWeek, withNextWeek, getWeek, groupsEnabledFor, getEffectiveGroupId, getGroupName, getSgData, withSgDataSet, getBlockLabel, computeSpecialistSpans, getResolvedSgCells, bumpSubjectForward, bumpWouldLoseContent } from '../lib/plannerHelpers'
 import { loadMyGroupPrefs, saveMyGroupPrefs } from '../lib/myGroupPrefs'
 import { linkify } from '../lib/linkify'
 import SessionModal from './SessionModal'
@@ -116,6 +116,27 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
   }
 
+  // Bumps this session forward: everything scheduled after it for this
+  // subject (and this ability group, if enabled) shifts one slot later,
+  // across the whole term — not just the active week. Triggered from the
+  // session modal, right next to Save.
+  function handleBumpSession(subj, day) {
+    const groupId = getEffectiveGroupId(data, subj, myGroupPrefs)
+    if (bumpWouldLoseContent(data, subj, groupId)) {
+      if (!window.confirm(
+        "This will push every later session for this subject forward by one. The last scheduled session this term has no free slot after it, so it will be removed. Continue?"
+      )) return
+    }
+    snapshotForUndo?.('bump session')
+    onSave(bumpSubjectForward(data, subj, activeWeek.id, day, groupId))
+  }
+
+  function handleModalBump() {
+    const { subj, day } = modalCtx
+    handleBumpSession(subj, day)
+    closeModal()
+  }
+
   function handleSaveNotes(notesKey, value) {
     const newWeek = { ...activeWeek, notes: { ...activeWeek.notes, [notesKey]: value } }
     onSave(withWeekUpdated(data, activeWeek.id, newWeek))
@@ -203,6 +224,7 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
         title={modalCtx ? `${planSubjects[modalCtx.subj]?.label || modalCtx.subj} — ${modalCtx.day}${modalCtx.groupId ? ` (${getGroupName(data, modalCtx.subj, modalCtx.groupId)})` : ''}` : ''}
         onSave={handleSaveSession}
         onDelete={modalCtx?.existing ? handleDeleteSession : null}
+        onBump={modalCtx?.existing ? handleModalBump : null}
         onClose={closeModal}
       />
 
@@ -310,6 +332,12 @@ function NotesCard({ cls, label, notesKey, week, onSaveNotes }) {
 }
 
 function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, onDelete, onSaveNotes, onOpenSgModal }) {
+  // For plannable rows, find which subject this row is for so we can show
+  // that subject's weekly focus topic (set in Term View) right next to the
+  // row's time/name — the same per-subject topic, just surfaced here too.
+  const rowSubject = Object.values(row.days || {}).find(c => c?.plannable)?.subject
+  const rowTopic = rowSubject ? week.topics?.[rowSubject] : null
+
   const cells = []
 
   for (const day of DAYS) {
@@ -451,6 +479,7 @@ function RowRenderer({ row, week, data, myGroupPrefs, rowSpans, onAdd, onEdit, o
       <td style={styles.timeCell}>
         <div style={styles.slotName}>{row.name}</div>
         <div style={styles.time}>{row.time}</div>
+        {rowTopic && <div style={styles.weekTopic}>🎯 {rowTopic}</div>}
       </td>
       {cells}
     </tr>
@@ -475,6 +504,7 @@ const styles = {
   timeCell: { padding: '6px 8px', fontSize: 10, fontWeight: 700, color: '#7A849E', verticalAlign: 'top', borderRight: '2px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', background: '#F8F9FB', width: 100 },
   slotName: { fontSize: 11, fontWeight: 800, color: '#1C2333' },
   time: { fontSize: 9 },
+  weekTopic: { fontSize: 9, fontStyle: 'italic', color: '#3A86D4', marginTop: 3, lineHeight: 1.3 },
   td: { padding: 5, verticalAlign: 'top', borderRight: '1px solid #D4D9E5', borderBottom: '1px solid #D4D9E5', minWidth: 120 },
   fixedCard: { borderRadius: 6, padding: '6px 8px', fontSize: 11, fontWeight: 700, textAlign: 'center', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F0F2F7' },
   planCard: { borderRadius: 6, padding: '7px 9px', minHeight: 56, cursor: 'pointer', position: 'relative', border: '1px solid #E4E7EE', borderLeft: '3px solid #3A86D4', background: '#FAFBFD' },
