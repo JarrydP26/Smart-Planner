@@ -3,7 +3,7 @@
 // explicit data object (and return a new object) rather than mutating
 // global variables, since React state should be updated immutably.
 
-import { SG_CELLS } from './timetableDefaults'
+import { SG_CELLS, DEFAULT_PLAN_SUBJECTS, DEFAULT_ROWS, DAYS } from './timetableDefaults'
 
 export function getWeek(data, weekId) {
   return data.weeks.find(w => w.id === weekId) || null
@@ -124,27 +124,6 @@ export function withNewWeek(data, planSubjects, startMonday) {
   }
 }
 
-// Recalculates every week's Mon–Fri date range from a real term start date
-// — fixes the case where weeks were auto-created starting from "whatever
-// day the teacher happened to set up the planner" rather than the actual
-// first day of term. Week order, labels, and all session content are left
-// untouched; only dateStart/label (the date-range text) are recomputed.
-export function withRecalculatedDates(data, termStartDate) {
-  const start = getMonday(new Date(termStartDate))
-  const weeks = data.weeks.map((week, i) => {
-    const monday = new Date(start)
-    monday.setDate(monday.getDate() + i * 7)
-    const end = new Date(monday)
-    end.setDate(end.getDate() + 4)
-    return {
-      ...week,
-      dateStart: monday.toISOString(),
-      label: `${fmtDate(monday)} – ${fmtDate(end)}`,
-    }
-  })
-  return { ...data, weeks }
-}
-
 export function withNextWeek(data, planSubjects) {
   const last = data.weeks[data.weeks.length - 1]
   const startMonday = last ? new Date(last.dateStart) : getMonday(new Date())
@@ -262,6 +241,205 @@ export function computeSpecialistSpans(rows, days, specialistBlocks) {
   })
 
   return spans
+}
+
+// ────────────────────────────────────────────────────────────────
+// Three-way merge — used on every save so two teachers editing the
+// planner at the same time don't silently wipe each other's work.
+//
+// `base` is the last version this browser knows is actually saved
+// (i.e. what it loaded, or what it last merged in). `mine` is this
+// browser's current edits. `theirs` is whatever's in the database
+// right now (which may include a colleague's changes made since we
+// loaded). We walk the whole data object and, for anything that
+// changed on only one side, keep that side's version untouched —
+// so a change to Tuesday's Maths session doesn't overwrite an
+// unrelated change to Friday's Reading session made elsewhere.
+//
+// Only when the exact same value was changed differently on both
+// sides is there a real conflict — kept as "mine" (the edit this
+// device is actively saving), and reported back so the teacher can
+// take a quick look if they want to.
+// ────────────────────────────────────────────────────────────────
+
+function deepEqual(a, b) {
+  if (a === b) return true
+  if (a === null || b === null) return a === b
+  if (typeof a !== typeof b) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false
+    return a.every((v, i) => deepEqual(v, b[i]))
+  }
+  if (typeof a === 'object') {
+    const ak = Object.keys(a), bk = Object.keys(b)
+    if (ak.length !== bk.length) return false
+    return ak.every(k => deepEqual(a[k], b[k]))
+  }
+  return a === b
+}
+
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function isIdArray(v) {
+  return Array.isArray(v) && v.every(x => x && typeof x === 'object' && x.id !== undefined)
+}
+
+// Merges an array of objects keyed by `id` (weeks, ability-group lists,
+// etc). Items changed on only one side are kept as-is; items added on
+// either side are kept; items deleted on one side stay deleted. Items
+// present and changed on both sides are merged recursively (and any true
+// conflict inside them bubbles up through `conflicts`).
+function mergeIdArray(base, mine, theirs, path, conflicts) {
+  const byId = arr => Object.fromEntries(arr.map(x => [x.id, x]))
+  const baseMap = byId(base), mineMap = byId(mine), theirsMap = byId(theirs)
+
+  const order = theirs.map(x => x.id)
+  mine.forEach(x => { if (!theirsMap[x.id]) order.push(x.id) })
+
+  const seen = new Set()
+  const result = []
+  order.forEach(id => {
+    if (seen.has(id)) return
+    seen.add(id)
+    const inBase = baseMap[id], inMine = mineMap[id], inTheirs = theirsMap[id]
+
+    if (inTheirs === undefined) {
+      // Deleted elsewhere. Keep it only if it's something I added locally
+      // that was never synced (i.e. it never existed in base or theirs).
+      if (inBase === undefined && inMine !== undefined) result.push(inMine)
+      return
+    }
+    if (inMine === undefined) {
+      // I deleted it locally. Respect that deletion.
+      if (inBase !== undefined) return
+      result.push(inTheirs)
+      return
+    }
+    result.push(mergeAny(inBase, inMine, inTheirs, `${path}.${id}`, conflicts))
+  })
+  return result
+}
+
+function mergeAny(base, mine, theirs, path, conflicts) {
+  if (deepEqual(mine, theirs)) return mine
+  if (deepEqual(mine, base)) return theirs
+  if (deepEqual(theirs, base)) return mine
+
+  // Both sides changed this value, and differently.
+  if (isIdArray(base) && Array.isArray(mine) && Array.isArray(theirs)) {
+    return mergeIdArray(base, mine, theirs, path, conflicts)
+  }
+  if (isPlainObject(base) && isPlainObject(mine) && isPlainObject(theirs)) {
+    const keys = new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)])
+    const out = {}
+    keys.forEach(k => {
+      out[k] = mergeAny(base[k], mine[k], theirs[k], path ? `${path}.${k}` : k, conflicts)
+    })
+    return out
+  }
+
+  // A genuine conflict — the same single value changed two different ways
+  // at once. Keep this device's edit (it's the one actively being saved)
+  // and flag it so it can be surfaced to the teacher.
+  conflicts.push(path)
+  return mine
+}
+
+// Entry point — merges a full planner data object three ways.
+// Returns { merged, conflicts } where conflicts is a list of dotted paths
+// (e.g. "weeks.w123.sessions.maths.Monday") for anything genuinely
+// double-edited at once.
+export function mergeData(base, mine, theirs) {
+  const conflicts = []
+  const merged = mergeAny(base || {}, mine || {}, theirs || {}, '', conflicts)
+  return { merged, conflicts }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Bump session — pushes an unfinished session forward. Not just that one
+// card: everything scheduled after it FOR THIS SUBJECT (and this ability
+// group, if enabled) shifts one slot later, all the way to the end of the
+// term. This mirrors how a real term plan works — falling behind on one
+// day pushes the whole rest of that subject's sequence back by one lesson.
+// ────────────────────────────────────────────────────────────────
+
+// The days (in Monday–Friday order) this subject actually has a plannable
+// cell in the CURRENT timetable. This is the real source of truth for
+// "which slots exist" — planSubjects' own day list is just descriptive
+// metadata used for Term View's columns, and can end up out of step with
+// whatever a customised Timetable Setup actually has configured. Using the
+// real rows avoids bump reading from a day that isn't a genuine lesson
+// slot (which is what made a bumped session look like it just vanished).
+export function getSubjectPlannableDays(data, subj) {
+  const rows = data.rows || DEFAULT_ROWS
+  const daysSet = new Set()
+  rows.forEach(row => {
+    if (!row.days) return // block-header / break rows have no per-day cells at all
+    DAYS.forEach(day => {
+      const cell = row.days[day]
+      if (cell?.plannable && cell.subject === subj) daysSet.add(day)
+    })
+  })
+  return DAYS.filter(d => daysSet.has(d))
+}
+
+// The ordered sequence of {weekId, day} slots for a subject across the
+// whole term, based on the days it's actually scheduled on in the current
+// timetable, in week order.
+export function getSubjectSlots(data, subj) {
+  const days = getSubjectPlannableDays(data, subj)
+  const slots = []
+  data.weeks.forEach(week => {
+    days.forEach(day => slots.push({ weekId: week.id, day }))
+  })
+  return slots
+}
+
+// True if bumping from the given point onward would push content off the
+// very end of the term (i.e. the last scheduled slot for this subject
+// already has a session in it) — check this first and warn before calling
+// bumpSubjectForward, since that session would otherwise be quietly lost.
+export function bumpWouldLoseContent(data, subj, groupId) {
+  const slots = getSubjectSlots(data, subj)
+  if (!slots.length) return false
+  const last = slots[slots.length - 1]
+  const week = data.weeks.find(w => w.id === last.weekId)
+  return !!getSessionFor(week, subj, last.day, groupId)
+}
+
+// Returns a NEW data object with this subject's sessions shifted: the
+// session that was at (fromWeekId, fromDay) moves INTO the next slot, that
+// slot's original content moves into the slot after IT, and so on to the
+// end of term — so nothing already planned gets overwritten, it's all just
+// delayed by one session. The very first slot (where you clicked bump)
+// ends up empty, since its content has moved forward to continue next
+// time. Only the very last slot in the whole sequence can lose content —
+// see bumpWouldLoseContent above.
+export function bumpSubjectForward(data, subj, fromWeekId, fromDay, groupId) {
+  const slots = getSubjectSlots(data, subj)
+  const fromIndex = slots.findIndex(s => s.weekId === fromWeekId && s.day === fromDay)
+  if (fromIndex === -1) return data
+
+  // Read every affected session up front, before any writes, since each
+  // slot's new content comes from the slot that currently precedes it.
+  const weekById = (id) => data.weeks.find(w => w.id === id)
+  const originalSessions = slots.slice(fromIndex).map(s => getSessionFor(weekById(s.weekId), subj, s.day, groupId))
+
+  let newData = data
+  for (let i = fromIndex; i < slots.length; i++) {
+    const { weekId, day } = slots[i]
+    const k = i - fromIndex
+    // The first affected slot is emptied (its content moved onward); every
+    // later slot inherits whatever was originally one slot earlier.
+    const newSession = k === 0 ? null : originalSessions[k - 1]
+    const week = newData.weeks.find(w => w.id === weekId)
+    const newWeek = withSessionSet(week, subj, day, groupId, newSession)
+    newData = withWeekUpdated(newData, weekId, newWeek)
+  }
+  return newData
 }
 
 export { getMonday }
