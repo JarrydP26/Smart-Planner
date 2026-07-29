@@ -1,40 +1,37 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import { useAuth } from '../lib/AuthContext'
 import { usePlannerData } from '../lib/usePlannerData'
 import { DEFAULT_PLAN_SUBJECTS, SUBJECT_DOT_COLOR } from '../lib/timetableDefaults'
 import TimetableSetup from '../components/TimetableSetup'
 import WeeklyPlanner from '../components/WeeklyPlanner'
 import TermView from '../components/TermView'
 import Settings from '../components/Settings'
+import SearchPanel from '../components/SearchPanel'
 
 export default function PlannerPage() {
   const { plannerId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
   const [planner, setPlanner] = useState(null)
   const [plannerLoading, setPlannerLoading] = useState(true)
   const [plannerError, setPlannerError] = useState('')
   const [view, setView] = useState('weekly') // 'weekly' | 'settings' | a subject key
+  const [undoStack, setUndoStack] = useState([]) // [{ data, label }, ...] — last entry is the most recent
 
-  const { data, loading: dataLoading, error: dataError, saving, save, saveNow, conflictWarning } = usePlannerData(plannerId)
+  const { data, loading: dataLoading, error: dataError, saving, save, saveNow } = usePlannerData(plannerId)
 
-  // Undo stack — up to 10 steps. Every destructive action across the app
-  // (delete session, clear week, delete ability group, bump, etc.) already
-  // calls snapshotForUndo(label) right before making its change; this is
-  // what actually captures and restores those snapshots.
-  const [undoStack, setUndoStack] = useState([])
-
+  // Call this right before a destructive action so it can be undone. Takes
+  // a snapshot of the CURRENT data before the change is made. Keeps the
+  // last 10 steps — older ones just drop off, same as most undo stacks.
   function snapshotForUndo(label) {
-    setUndoStack(stack => [...stack, { label, data }].slice(-10))
+    setUndoStack(stack => [...stack, { data, label }].slice(-10))
   }
 
-  async function handleUndo() {
-    if (!undoStack.length) return
+  function performUndo() {
+    if (undoStack.length === 0) return
     const last = undoStack[undoStack.length - 1]
+    save(last.data)
     setUndoStack(stack => stack.slice(0, -1))
-    await saveNow(last.data)
   }
 
   useEffect(() => {
@@ -59,11 +56,11 @@ export default function PlannerPage() {
 
   const isBlank = !data.weeks || data.weeks.length === 0
   const planSubjects = data.planSubjects || DEFAULT_PLAN_SUBJECTS
-  const isOwner = planner?.owner_id === user?.id
 
   return (
     <div style={styles.page}>
-      <nav style={styles.sidebar}>
+      <style>{PRINT_CSS}</style>
+      <nav className="no-print" style={styles.sidebar}>
         <div style={styles.sidebarTitle}>
           📋 {data.appSettings.className} Planner
           <div style={styles.sidebarSubtitle}>{data.appSettings.schoolName}</div>
@@ -72,6 +69,12 @@ export default function PlannerPage() {
         <button style={view === 'weekly' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('weekly')}>
           🗓️ Weekly Planner
         </button>
+
+        {!isBlank && (
+          <button style={view === 'search' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('search')}>
+            🔍 Search
+          </button>
+        )}
 
         {!isBlank && (
           <>
@@ -88,50 +91,108 @@ export default function PlannerPage() {
           </>
         )}
 
-        <div style={styles.sectionLabel}>Timetable</div>
-        <button style={view === 'timetable' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('timetable')}>
-          🗓️ Edit Timetable
-        </button>
-
         <div style={styles.sectionLabel}>Settings</div>
+        {!isBlank && (
+          <button style={view === 'timetable-setup' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('timetable-setup')}>
+            📐 Timetable
+          </button>
+        )}
         <button style={view === 'settings' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem} onClick={() => setView('settings')}>
           🔧 Settings
         </button>
       </nav>
 
       <div style={styles.main}>
-        <div style={styles.topBar}>
+        <div className="no-print" style={styles.topBar}>
           <button style={styles.backBtn} onClick={() => navigate('/')}>← All planners</button>
           <span style={styles.plannerName}>{planner.name}</span>
           {undoStack.length > 0 && (
-            <button style={styles.undoBtn} onClick={handleUndo} title={`Undo: ${undoStack[undoStack.length - 1].label}`}>
-              ↩️ Undo ({undoStack.length})
+            <button style={styles.undoBtn} title={`Undo: ${undoStack[undoStack.length - 1].label}`} onClick={performUndo}>
+              ↩️ Undo: {undoStack[undoStack.length - 1].label}{undoStack.length > 1 ? ` (${undoStack.length} steps)` : ''}
             </button>
           )}
           <span style={styles.saveStatus}>{saving ? 'Saving…' : ''}</span>
         </div>
 
-        {conflictWarning && (
-          <div style={styles.conflictBanner}>⚠️ {conflictWarning}</div>
-        )}
-
-        {isBlank ? (
-          <TimetableSetup data={data} onSave={saveNow} snapshotForUndo={snapshotForUndo} />
-        ) : view === 'weekly' ? (
-          <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
-        ) : view === 'timetable' ? (
-          <TimetableSetup data={data} onSave={saveNow} onDone={() => setView('weekly')} snapshotForUndo={snapshotForUndo} />
-        ) : view === 'settings' ? (
-          <Settings data={data} onSave={save} plannerId={plannerId} isOwner={isOwner} snapshotForUndo={snapshotForUndo} />
-        ) : planSubjects[view] ? (
-          <TermView key={view} data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
-        ) : (
-          <div style={{ padding: 30 }}>Unknown view.</div>
-        )}
+        <div className="print-area">
+          {isBlank ? (
+            <TimetableSetup data={data} onSave={saveNow} />
+          ) : view === 'weekly' ? (
+            <WeeklyPlanner data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'search' ? (
+            <SearchPanel data={data} onNavigate={(subj) => setView(subj)} />
+          ) : view === 'settings' ? (
+            <Settings data={data} onSave={save} snapshotForUndo={snapshotForUndo} />
+          ) : view === 'timetable-setup' ? (
+            <TimetableSetup data={data} onSave={saveNow} onDone={() => setView('weekly')} />
+          ) : planSubjects[view] ? (
+            <TermView data={data} onSave={save} subj={view} snapshotForUndo={snapshotForUndo} />
+          ) : (
+            <div style={{ padding: 30 }}>Unknown view.</div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
+// Print CSS — since the app uses inline styles rather than a stylesheet, the
+// sidebar/topbar/buttons carry a "no-print" className specifically so this
+// stylesheet can hide them; only .print-area's content shows when printing.
+// Hiding is layered three ways (display/visibility/position) as a defensive
+// measure in case any single approach gets overridden somewhere.
+const PRINT_CSS = `
+@media print {
+  @page { size: A3 landscape; margin: 8mm; }
+
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  html, body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* The app's normal layout is a flex row (sidebar + main) — once the
+     sidebar is removed for print, let main take the full page width. */
+  #root, .print-area {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Browsers strip background colours by default when printing — this is
+     the #1 reason subject/specialist colours vanish on a printed page. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  table {
+    box-shadow: none !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  tr, td, th {
+    page-break-inside: avoid;
+  }
+
+  /* Placeholder "+"/click hints add no information on paper */
+  button {
+    cursor: default;
+  }
+}
+`
 
 const styles = {
   page: { minHeight: '100vh', background: '#F0F2F7', fontFamily: "'Segoe UI', system-ui, sans-serif", display: 'flex' },
@@ -145,9 +206,8 @@ const styles = {
   main: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
   topBar: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#fff', borderBottom: '1px solid #D4D9E5' },
   backBtn: { fontSize: 12, padding: '6px 12px', border: '1.5px solid #D4D9E5', borderRadius: 6, background: 'transparent', cursor: 'pointer' },
+  undoBtn: { fontSize: 11, padding: '6px 12px', border: '1.5px solid #D4D9E5', borderRadius: 6, background: '#F0F2F7', cursor: 'pointer', fontWeight: 600 },
   plannerName: { fontSize: 14, fontWeight: 700 },
-  undoBtn: { fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#F0F2F7', color: '#1C2333', cursor: 'pointer', fontWeight: 600 },
   saveStatus: { fontSize: 11, color: '#7A849E', marginLeft: 'auto' },
-  conflictBanner: { fontSize: 11, color: '#8A6D00', background: '#FFF6DB', border: '1px solid #F0DE9A', padding: '8px 16px', margin: '10px 24px 0' },
   center: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" },
 }
