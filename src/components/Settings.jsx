@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { DEFAULT_PLAN_SUBJECTS, SG_CELLS } from '../lib/timetableDefaults'
-import { withNewWeek, withNextWeek, withRelabeledTerm, getMonday } from '../lib/plannerHelpers'
+import { withNewWeek, withNextWeek, withRelabeledTerm, withRecalculatedDates, getMonday } from '../lib/plannerHelpers'
 import { buildFullTermDocument, downloadWordDoc } from '../lib/wordExport'
 
 const TOGGLE_DEFINITIONS = [
@@ -19,6 +19,11 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
   const [schoolName, setSchoolName] = useState(data.appSettings.schoolName)
   const [termWeeks, setTermWeeks] = useState(data.appSettings.termWeeks)
   const [currentTerm, setCurrentTerm] = useState(data.appSettings.currentTerm || 1)
+  const [termStartDate, setTermStartDate] = useState(() => {
+    const firstWeek = data.weeks?.[0]
+    return firstWeek?.dateStart ? firstWeek.dateStart.slice(0, 10) : ''
+  })
+  const [datesSavedMsg, setDatesSavedMsg] = useState(false)
   const [savedMsg, setSavedMsg] = useState(false)
   const [sgLabels, setSgLabels] = useState(() => {
     const overrides = data.appSettings.sgCellLabels || {}
@@ -116,6 +121,16 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
       }
     }
     return newData
+  }
+
+  function recalculateDates() {
+    if (!isOwner) return
+    if (!termStartDate) { window.alert('Pick the actual first day of term first.'); return }
+    if (!window.confirm(`Recalculate every week's date range starting from ${termStartDate}? Week numbers, labels, and all planned content stay exactly the same — only the date ranges shown (e.g. "28 Jul – 1 Aug") get corrected.`)) return
+    snapshotForUndo?.('recalculate week dates')
+    onSave(withRecalculatedDates(data, termStartDate))
+    setDatesSavedMsg(true)
+    setTimeout(() => setDatesSavedMsg(false), 2000)
   }
 
   function saveDetails() {
@@ -310,6 +325,28 @@ export default function Settings({ data, onSave, snapshotForUndo, plannerId, isO
           <button style={styles.primaryBtn} onClick={saveDetails}>Save details</button>
           {savedMsg && <span style={styles.savedMsg}>Saved ✓</span>}
         </div>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Term start date</div>
+        <div style={styles.sectionDesc}>
+          New weeks are auto-created starting from whatever day you happened to set up the planner — this corrects every week's date range to count forward from the real first Monday of term. Week numbers, labels, and all planned content stay exactly the same.
+        </div>
+        <div style={styles.field}>
+          <label style={styles.label}>Actual first day of term</label>
+          <input
+            type="date"
+            value={termStartDate}
+            onChange={(e) => setTermStartDate(e.target.value)}
+            disabled={!isOwner}
+            style={{ ...styles.input, maxWidth: 180, opacity: isOwner ? 1 : 0.6 }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button style={styles.primaryBtn} onClick={recalculateDates} disabled={!isOwner}>Recalculate week dates</button>
+          {datesSavedMsg && <span style={styles.savedMsg}>Saved ✓</span>}
+        </div>
+        {!isOwner && <p style={styles.hint}>Only the planner owner can recalculate dates.</p>}
       </div>
 
       {isOwner && (
