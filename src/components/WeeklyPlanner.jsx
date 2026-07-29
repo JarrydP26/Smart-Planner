@@ -466,7 +466,6 @@ const styles = {
   tabAdd: { padding: '6px 10px', borderRadius: '6px 6px 0 0', border: '1.5px dashed #D4D9E5', background: 'none', fontSize: 14, color: '#7A849E', cursor: 'pointer' },
   printBtn: { marginLeft: 'auto', padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   blockOutBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #E8B0B0', background: '#FFF0F0', color: '#C0392B', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
-  printBtn: { padding: '6px 12px', borderRadius: 6, border: '1.5px solid #D4D9E5', background: '#fff', color: '#1C2333', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   tableWrap: { padding: '16px 20px', overflowX: 'auto' },
   table: { minWidth: 820, width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1.5px solid #D4D9E5', borderRadius: 8, overflow: 'hidden' },
   th: { padding: '9px 10px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#7A849E', background: '#F0F2F7', borderBottom: '2px solid #D4D9E5', textAlign: 'center' },
