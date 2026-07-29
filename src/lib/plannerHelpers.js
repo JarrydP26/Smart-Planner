@@ -131,6 +131,27 @@ export function withNextWeek(data, planSubjects) {
   return withNewWeek(data, planSubjects, startMonday)
 }
 
+// Recalculates every week's Mon–Fri date range from a real term start date
+// — fixes the case where weeks were auto-created starting from "whatever
+// day the teacher happened to set up the planner" rather than the actual
+// first day of term. Week order, labels, and all session content are left
+// untouched; only dateStart/label (the date-range text) are recomputed.
+export function withRecalculatedDates(data, termStartDate) {
+  const start = getMonday(new Date(termStartDate))
+  const weeks = data.weeks.map((week, i) => {
+    const monday = new Date(start)
+    monday.setDate(monday.getDate() + i * 7)
+    const end = new Date(monday)
+    end.setDate(end.getDate() + 4)
+    return {
+      ...week,
+      dateStart: monday.toISOString(),
+      label: `${fmtDate(monday)} – ${fmtDate(end)}`,
+    }
+  })
+  return { ...data, weeks }
+}
+
 // Updates the "Term X" portion of every existing week's label to a new term
 // number, keeping each week's own "Week N" number unchanged.
 export function withRelabeledTerm(data, newTerm) {
