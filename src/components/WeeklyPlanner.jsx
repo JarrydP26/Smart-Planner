@@ -153,6 +153,12 @@ export default function WeeklyPlanner({ data, onSave, snapshotForUndo }) {
 
   return (
     <div>
+      <div className="print-only">
+        {data.appSettings.className}
+        {' — '}
+        {activeWeek.weekLabel ? `${activeWeek.weekLabel} (${activeWeek.label})` : activeWeek.label}
+      </div>
+
       {/* Week tabs */}
       <div className="no-print" style={styles.tabBar}>
         {weeks.map((w) => (

@@ -143,6 +143,10 @@ export default function TermView({ data, onSave, subj, snapshotForUndo }) {
 
   return (
     <div style={styles.wrap}>
+      <div className="print-only">
+        {data.appSettings.className} — {subjMeta.label} — Term Overview
+      </div>
+
       <div className="no-print" style={styles.header}>
         <div style={styles.title}>
           <span style={{ ...styles.dot, background: acc }}></span>
